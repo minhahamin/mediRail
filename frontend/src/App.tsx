@@ -1,0 +1,147 @@
+import { useCallback, useEffect, useState } from "react";
+import { api, setToken, setUnauthorizedHandler } from "./api";
+import { Appointments } from "./components/Appointments";
+import { Audit } from "./components/Audit";
+import { Chat } from "./components/Chat";
+import { Login } from "./components/Login";
+import { Patients } from "./components/Patients";
+import { Soap } from "./components/Soap";
+import { ROLE_ICON, ROLE_LABEL, Sparkle } from "./components/ui";
+import type { PatientLite, Role, Session } from "./types";
+
+type TabId = "chat" | "appointments" | "patients" | "soap" | "audit";
+
+const TABS: Record<Role, { id: TabId; label: string }[]> = {
+  patient: [{ id: "chat", label: "💬 상담" }, { id: "appointments", label: "📅 내 예약" }],
+  nurse: [{ id: "chat", label: "💬 상담" }, { id: "patients", label: "🗒️ 환자" }, { id: "appointments", label: "📅 예약 현황" }],
+  doctor: [{ id: "chat", label: "💬 상담" }, { id: "patients", label: "🗒️ 환자" }, { id: "soap", label: "📓 SOAP" }, { id: "appointments", label: "📅 예약 현황" }],
+  admin: [{ id: "chat", label: "💬 상담" }, { id: "appointments", label: "📅 예약 관리" }, { id: "patients", label: "🗒️ 환자(인적사항)" }, { id: "audit", label: "🔍 감사 로그" }],
+};
+
+const STORE = "medirail.session";
+
+function loadSession(): Session | null {
+  try {
+    const raw = sessionStorage.getItem(STORE);
+    return raw ? (JSON.parse(raw) as Session) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveSession(s: Session | null) {
+  try {
+    if (s) sessionStorage.setItem(STORE, JSON.stringify(s));
+    else sessionStorage.removeItem(STORE);
+  } catch {
+    /* 저장이 막힌 환경에서도 앱은 동작해야 한다 */
+  }
+}
+
+export default function App() {
+  const [session, setSession] = useState<Session | null>(() => {
+    const s = loadSession();
+    setToken(s?.token ?? null);
+    return s;
+  });
+  const [tab, setTab] = useState<TabId>("chat");
+  const [patients, setPatients] = useState<PatientLite[]>([]);
+  const [selected, setSelected] = useState<number | null>(null);
+  const [prefill, setPrefill] = useState("");
+  const [expired, setExpired] = useState(false);
+
+  const logout = useCallback(() => {
+    setToken(null);
+    saveSession(null);
+    setSession(null);
+    setTab("chat");
+    setSelected(null);
+    setPatients([]);
+  }, []);
+
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      setExpired(true);
+      logout();
+    });
+  }, [logout]);
+
+  function onLogin(s: Session) {
+    setToken(s.token);
+    saveSession(s);
+    setExpired(false);
+    setSession(s);
+    setTab("chat");
+  }
+
+  useEffect(() => {
+    if (!session || session.role === "patient") return;
+    api.patients().then(setPatients).catch(() => setPatients([]));
+  }, [session]);
+
+  const askAbout = useCallback((patientId: number | null, prompt: string) => {
+    if (patientId) setSelected(patientId);
+    setPrefill(prompt);
+    setTab("chat");
+  }, []);
+  const clearPrefill = useCallback(() => setPrefill(""), []);
+
+  if (!session) {
+    return (
+      <div className="shell">
+        <a className="skip" href="#main">본문으로 건너뛰기</a>
+        {expired && <div className="note warn" role="alert">세션이 만료되었습니다. 다시 로그인해 주세요.</div>}
+        <Login onLogin={onLogin} />
+      </div>
+    );
+  }
+
+  const tabs = TABS[session.role];
+
+  return (
+    <div className="shell">
+      <a className="skip" href="#main">본문으로 건너뛰기</a>
+      <header className="browser">
+        <span className="brand"><Sparkle /><span>Medi<b>Rail</b></span></span>
+        <span className="addr">medirail · 근거 기반 의료 AI 에이전트 (데모 · 합성 데이터)</span>
+        <span className="who">
+          <span className="chip">{ROLE_ICON[session.role]} {ROLE_LABEL[session.role]}</span>
+          <span>{session.name}</span>
+          <button className="logout" type="button" onClick={logout}>로그아웃</button>
+        </span>
+      </header>
+
+      <div className="layout">
+        <nav aria-label="메뉴" className="win">
+          <ul className="notepad">
+            {tabs.map((t) => (
+              <li key={t.id}>
+                <button type="button" aria-current={tab === t.id ? "page" : undefined} onClick={() => setTab(t.id)}>
+                  {t.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </nav>
+
+        <main id="main" tabIndex={-1}>
+          {/* 상담은 탭을 옮겨도 대화가 유지되도록 항상 마운트해 둔다 */}
+          <div hidden={tab !== "chat"}>
+            <Chat session={session} patients={patients} selectedPatient={selected} onSelectPatient={setSelected} prefill={prefill} onPrefillUsed={clearPrefill} />
+          </div>
+          {tab === "appointments" && <Appointments session={session} patients={patients} />}
+          {tab === "patients" && (
+            <Patients session={session} patients={patients} selected={selected} onSelect={setSelected}
+              onAsk={(pid, prompt) => askAbout(pid, prompt)} />
+          )}
+          {tab === "soap" && <Soap onAsk={(p) => askAbout(selected, p)} />}
+          {tab === "audit" && <Audit />}
+        </main>
+      </div>
+
+      <footer className="footer">
+        MediRail은 진단·처방을 하지 않는 포트폴리오 데모입니다. 모든 데이터는 합성 데이터입니다. <b>최종 판단은 반드시 의사와 상담하세요.</b>
+      </footer>
+    </div>
+  );
+}
