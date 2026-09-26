@@ -1,0 +1,15 @@
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/node_modules
+frontend
+backend/tests
+eval
+docs
+data
+/README.md
