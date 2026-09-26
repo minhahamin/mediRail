@@ -43,6 +43,10 @@ def emergency_response(categories: list[str]) -> str:
 
 CITATION = re.compile(r"\[(D\d+)\]")
 PMID = re.compile(r"PMID\s*:?\s*(\d{5,9})", re.I)
+# 약물 병용/복용의 안전을 보증하는 단정 (DUR '목록에 없음'은 안전 보증이 아니다)
+SAFETY_ASSURANCE = re.compile(
+    r"(병용|복용|함께|같이|먹어도|써도|사용해도|섭취).{0,15}(안전합니다|안전해요|괜찮습니다|괜찮아요|문제(가)? ?없습니다|문제(가)? ?되지 않)")
+SAFETY_ASSURANCE_FAIL = "약물 병용·복용의 안전 여부는 제가 보증할 수 없습니다. 조회 결과와 함께 의사나 약사에게 확인해 주세요."
 FORBIDDEN_CLAIM = re.compile(
     r"확진(입니다|됩니다|했습니다|이에요)|진단합니다|처방합니다|처방해 드리겠습니다|\d+\s?(mg|mL|정|알)(을|를|씩)?\s?(복용|투여|드시)하세요"
 )
@@ -72,6 +76,9 @@ def check_output(answer: str, sources: list[dict], user_text: str = "") -> Check
     elif cited - allowed:
         events.append("invalid_citation")
         answer = CITATION_FAIL
+    elif SAFETY_ASSURANCE.search(answer):
+        events.append("safety_assurance")
+        answer = SAFETY_ASSURANCE_FAIL
     elif FORBIDDEN_CLAIM.search(answer):
         events.append("forbidden_claim")
         answer = SAFE_REPLACEMENT
