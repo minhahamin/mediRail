@@ -74,6 +74,10 @@ def check_login(ip: str) -> None:
     _windows.hit(f"login:ip:{ip}", get_settings().login_per_ip_min, 60, "로그인 시도")
 
 
+def check_register(ip: str) -> None:
+    _windows.hit(f"register:ip:{ip}", get_settings().register_per_ip_hour, 3600, "회원가입 시도")
+
+
 def reset_all() -> None:
     _windows.reset()
     _daily.reset()

@@ -51,6 +51,11 @@ def _not_found(_, e):
     return JSONResponse({"detail": str(e)}, status_code=404)
 
 
+@app.exception_handler(services.Conflict)
+def _conflict(_, e):
+    return JSONResponse({"detail": str(e)}, status_code=409)
+
+
 @app.exception_handler(services.ServiceError)
 def _bad_request(_, e):
     return JSONResponse({"detail": str(e)}, status_code=400)
@@ -59,6 +64,17 @@ def _bad_request(_, e):
 class LoginIn(BaseModel):
     username: str
     password: str
+
+
+class RegisterIn(BaseModel):
+    """가입은 항상 환자 계정이다. role 필드는 없으며, 요청에 넣어도 무시된다."""
+    username: str = Field(max_length=40)
+    password: str = Field(max_length=100)
+    name: str = Field(max_length=60)
+    birth_year: int
+    sex: str = Field(max_length=2)
+    allergies: str = Field(default="", max_length=400)
+    medications: str = Field(default="", max_length=400)
 
 
 class ChatIn(BaseModel):
@@ -90,6 +106,14 @@ def login(body: LoginIn, request: Request, conn=Depends(db.get_db)):
         services.audit(conn, None, "auth.login_failed", body.username[:40])
         raise HTTPException(401, "아이디 또는 비밀번호가 올바르지 않습니다")
     services.audit(conn, user, "auth.login")
+    return {"access_token": create_token(user), "role": user.role, "name": user.name, "patient_id": user.patient_id}
+
+
+@app.post("/auth/register", status_code=201)
+def register(body: RegisterIn, request: Request, conn=Depends(db.get_db)):
+    ratelimit.check_register(client_ip(request))
+    user = services.register_patient(conn, body.username, body.password, body.name, body.birth_year, body.sex,
+                                     body.allergies, body.medications)
     return {"access_token": create_token(user), "role": user.role, "name": user.name, "patient_id": user.patient_id}
 
 

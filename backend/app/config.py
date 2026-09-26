@@ -36,6 +36,8 @@ class Settings:
     chat_per_ip_hour: int
     daily_chat_limit: int
     login_per_ip_min: int
+    register_per_ip_hour: int
+    max_users: int
 
     @property
     def is_production(self) -> bool:
@@ -61,4 +63,6 @@ def get_settings() -> Settings:
         chat_per_ip_hour=int(e("MEDIRAIL_CHAT_PER_IP_HOUR", "60")),
         daily_chat_limit=int(e("MEDIRAIL_DAILY_CHAT_LIMIT", "300")),
         login_per_ip_min=int(e("MEDIRAIL_LOGIN_PER_IP_MIN", "10")),
+        register_per_ip_hour=int(e("MEDIRAIL_REGISTER_PER_IP_HOUR", "5")),
+        max_users=int(e("MEDIRAIL_MAX_USERS", "300")),   # 공개 데모의 DB 무한 증가 방지
     )

@@ -3,6 +3,7 @@
 REST 라우트와 에이전트 도구는 모두 이 계층을 호출한다. 그래서 LLM이 어떤 도구 호출을 시도해도
 사람이 직접 API를 호출할 때와 동일한 접근 제어가 적용된다 (프롬프트가 아니라 코드로 강제).
 """
+import re
 from datetime import date, datetime
 
 from . import clinic
@@ -19,6 +20,10 @@ class PermissionDenied(ServiceError):
 
 
 class NotFound(ServiceError):
+    pass
+
+
+class Conflict(ServiceError):
     pass
 
 
@@ -45,6 +50,59 @@ def _resolve_patient(actor: User, patient_id: int | None, own: str) -> int:
     if patient_id is not None and patient_id != actor.patient_id:
         raise PermissionDenied("본인의 정보만 조회·변경할 수 있습니다")
     return actor.patient_id
+
+
+# ---------- 회원가입 (환자 전용) ----------
+USERNAME_RE = re.compile(r"^[a-z0-9_]{4,20}$")
+# 직원·시스템을 사칭할 수 있는 아이디는 쓸 수 없다 (데모 계정 patient1~4 등은 중복 검사로 막힌다)
+RESERVED_PREFIXES = ("doctor", "nurse", "admin", "staff", "root", "system", "medirail", "support")
+
+
+def register_patient(conn, username: str, password: str, name: str, birth_year: int, sex: str,
+                     allergies: str = "", medications: str = "") -> User:
+    """새 환자 계정과 환자 기록을 만든다. 역할은 항상 patient다 (의료진·원무는 가입으로 만들 수 없다)."""
+    from .config import get_settings
+    from .seed import hash_password
+
+    username = (username or "").strip().lower()
+    if not USERNAME_RE.match(username):
+        raise ServiceError("아이디는 영문 소문자·숫자·밑줄(_) 4~20자여야 합니다")
+    if username.startswith(RESERVED_PREFIXES):
+        raise ServiceError("사용할 수 없는 아이디입니다")
+    if not (8 <= len(password or "") <= 72 and re.search(r"[A-Za-z]", password) and re.search(r"\d", password)):
+        raise ServiceError("비밀번호는 8~72자이며 영문과 숫자를 모두 포함해야 합니다")
+    name = _clean_text(name)
+    if not 1 <= len(name) <= 20:
+        raise ServiceError("이름(닉네임)은 1~20자여야 합니다")
+    if not 1900 <= int(birth_year or 0) <= date.today().year:
+        raise ServiceError("출생연도를 올바르게 입력해 주세요")
+    if sex not in ("F", "M"):
+        raise ServiceError("성별을 선택해 주세요")
+    allergies, medications = _clean_text(allergies), _clean_text(medications)
+    if len(allergies) > 200 or len(medications) > 200:
+        raise ServiceError("알레르기·복용약은 각각 200자 이하여야 합니다")
+    if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] >= get_settings().max_users:
+        raise ServiceError("데모 계정 정원이 가득 찼습니다. 데모 계정으로 체험해 주세요.")
+    if conn.execute("SELECT 1 FROM users WHERE username=?", (username,)).fetchone():
+        raise Conflict("이미 사용 중인 아이디입니다")
+    try:
+        pid = conn.execute("INSERT INTO patients (name, birth_year, sex, allergies, medications) VALUES (?,?,?,?,?)",
+                           (name, int(birth_year), sex, allergies, medications)).lastrowid
+        uid = conn.execute("INSERT INTO users (username, password_hash, role, name, patient_id) VALUES (?,?,?,?,?)",
+                           (username, hash_password(password), "patient", name, pid)).lastrowid
+        conn.commit()
+    except Exception as e:  # 동시 가입으로 같은 아이디가 먼저 들어간 경우 (sqlite IntegrityError / PostgreSQL UniqueViolation)
+        conn.rollback()
+        if type(e).__name__ in ("IntegrityError", "UniqueViolation"):
+            raise Conflict("이미 사용 중인 아이디입니다")
+        raise
+    user = User(uid, username, "patient", name, pid)
+    audit(conn, user, "auth.register", f"patient={pid}")
+    return user
+
+
+def _clean_text(s) -> str:
+    return re.sub(r"\s+", " ", (s or "")).strip()
 
 
 # ---------- 환자 정보 ----------
