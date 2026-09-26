@@ -28,7 +28,7 @@ export function Patients({ session, patients, selected, onSelect, onAsk }: {
     (async () => {
       try {
         const profile = await api.patient(selected);
-        const intake = clinical ? await api.intake(selected).catch((e) => (e instanceof ApiError && e.status === 404 ? null : Promise.reject(e))) : undefined;
+        const intake = clinical ? await api.intake(selected) : undefined;
         const encounters = session.role === "doctor" ? await api.encounters(selected) : undefined;
         if (alive) setDetail({ profile, intake, encounters });
       } catch (e) {

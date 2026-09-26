@@ -152,7 +152,11 @@ def patient_encounters(patient_id: int, user: User = Depends(current_user), conn
 
 @app.get("/patients/{patient_id}/intake")
 def patient_intake(patient_id: int, user: User = Depends(current_user), conn=Depends(db.get_db)):
-    return services.get_latest_intake(conn, user, patient_id)
+    """문진이 아직 없는 것은 오류가 아니라 정상 상태이므로 null(200)로 응답한다 (권한 오류는 그대로 403)."""
+    try:
+        return services.get_latest_intake(conn, user, patient_id)
+    except services.NotFound:
+        return None
 
 
 @app.post("/intake")

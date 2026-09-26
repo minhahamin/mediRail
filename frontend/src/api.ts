@@ -64,7 +64,7 @@ export const api = {
     post<ChatResponse>("/chat", { message, history, patient_id: patientId }),
   patients: () => request<PatientLite[]>("/patients"),
   patient: (id: number) => request<PatientProfile>(`/patients/${id}`),
-  intake: (id: number) => request<Intake>(`/patients/${id}/intake`),
+  intake: (id: number) => request<Intake | null>(`/patients/${id}/intake`),
   encounters: (id: number) => request<Encounter[]>(`/patients/${id}/encounters`),
   appointments: () => request<Appointment[]>("/appointments"),
   slots: (date: string) => request<{ date: string; slots: string[] }>(`/appointments/slots?date=${date}`),

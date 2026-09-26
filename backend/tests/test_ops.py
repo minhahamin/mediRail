@@ -149,6 +149,14 @@ def test_soap_list_contains_drafts_and_approval_moves_them(client):
     assert len(client.get("/soap?status=approved", headers=doc).json()) == 1
 
 
+def test_missing_intake_is_null_not_an_error(client):
+    """문진이 없는 환자(이도윤)는 404가 아니라 null. 권한 없는 역할은 여전히 403."""
+    r = client.get("/patients/2/intake", headers=login(client, "nurse1"))
+    assert r.status_code == 200 and r.json() is None
+    assert client.get("/patients/1/intake", headers=login(client, "nurse1")).json()["allergies"] == "페니실린"
+    assert client.get("/patients/2/intake", headers=login(client, "admin1")).status_code == 403
+
+
 def test_encounters_endpoint_permissions(client):
     assert client.get("/patients/2/encounters", headers=login(client, "doctor1")).json()[0]["chief_complaint"] == "기침 5일"
     for name in ("nurse1", "admin1", "patient2"):
