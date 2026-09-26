@@ -12,6 +12,7 @@ RUN npm run build
 FROM nginx:1.27-alpine
 # /etc/nginx/templates/*.template 은 컨테이너 시작 시 환경변수(PORT)가 치환되어 conf.d로 들어간다
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
+COPY security-headers.conf /etc/nginx/security-headers.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 ENV PORT=8080
 EXPOSE 8080
