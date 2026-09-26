@@ -14,15 +14,15 @@ class Role(StrEnum):
 
 PERMISSIONS: dict[Role, frozenset[str]] = {
     Role.PATIENT: frozenset({
-        "chat", "appointment.read_own", "appointment.book_own", "appointment.cancel_own", "intake.submit_own",
+        "chat", "appointment.read_own", "appointment.book_own", "appointment.cancel_own", "intake.submit_own", "drug.check",
     }),
     Role.NURSE: frozenset({
         "chat", "appointment.read_all", "patient.read_demographics", "patient.read_clinical", "intake.read",
-        "literature.search",
+        "literature.search", "drug.check",
     }),
     Role.DOCTOR: frozenset({
         "chat", "appointment.read_all", "patient.read_demographics", "patient.read_clinical", "intake.read",
-        "encounter.read", "soap.draft", "soap.approve", "literature.search",
+        "encounter.read", "soap.draft", "soap.approve", "literature.search", "drug.check",
     }),
     Role.ADMIN: frozenset({
         "chat", "appointment.read_all", "appointment.manage_all", "patient.read_demographics", "audit.read",

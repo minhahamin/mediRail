@@ -91,18 +91,40 @@ def _encounter(conn, user, args):
     return f"진료 기록 #{e['id']}", e
 
 
+def _mcp(server: str, tool: str, arguments: dict, label: str) -> dict:
+    """MCP 도구 호출. 도구 오류는 그대로 보여주고, 서버 장애는 '일시적으로 사용 불가'로 안내한다."""
+    try:
+        return mcp_bridge.get_bridge().call(server, tool, arguments)
+    except mcp_bridge.McpToolError as e:
+        raise services.ServiceError(str(e))
+    except mcp_bridge.McpError as e:
+        raise services.ServiceError(f"{label} 서비스를 일시적으로 사용할 수 없습니다 ({e})")
+
+
 def _literature(conn, user, args):
     query = str(args.get("query", "")).strip()
     n = max(1, min(int(args.get("max_results") or 5), 8))
     years = int(args["recent_years"]) if args.get("recent_years") else None
     services.audit(conn, user, "literature.search", f"q_len={len(query)} n={n}")  # 질의 원문은 기록하지 않음(환자 정보가 섞일 수 있음)
-    try:
-        data = mcp_bridge.get_bridge().call("pubmed", "search_pubmed", {"query": query, "max_results": n, "recent_years": years})
-    except mcp_bridge.McpToolError as e:
-        raise services.ServiceError(str(e))
-    except mcp_bridge.McpError as e:
-        raise services.ServiceError(f"문헌 검색 서비스를 일시적으로 사용할 수 없습니다 ({e})")
+    data = _mcp("pubmed", "search_pubmed", {"query": query, "max_results": n, "recent_years": years}, "문헌 검색")
     return f"PubMed 검색: {query[:60]} ({data.get('returned', 0)}건)", data
+
+
+def _interaction(conn, user, args):
+    a, b = str(args.get("drug_a", "")).strip(), str(args.get("drug_b", "")).strip()
+    if not a or not b:
+        raise services.ServiceError("두 약물명이 모두 필요합니다")
+    services.audit(conn, user, "drug.check", "interaction")  # 약물명은 개인의 복약 정보일 수 있어 기록하지 않음
+    data = _mcp("mfds_dur", "check_drug_interaction", {"drug_a": a, "drug_b": b}, "약물 정보")
+    return f"식약처 DUR 병용금기 조회 ({data.get('status')})", data
+
+
+def _drug_safety(conn, user, args):
+    drug = str(args.get("drug", "")).strip()
+    if not drug:
+        raise services.ServiceError("약물명이 필요합니다")
+    services.audit(conn, user, "drug.check", "safety")
+    return "식약처 DUR 안전사용 정보", _mcp("mfds_dur", "get_drug_safety_info", {"drug": drug}, "약물 정보")
 
 
 def _soap_draft(conn, user, args):
@@ -118,6 +140,13 @@ def _soap_draft(conn, user, args):
 
 
 TOOLS: dict[str, Tool] = {t.name: t for t in [
+    Tool("check_drug_interaction",
+         "두 약물의 식약처 DUR 병용금기 여부를 조회한다(MCP). 약물명은 성분명(한글)으로 쓴다(상품명이면 성분명으로 바꿔서). "
+         "status가 not_listed이면 '병용금기 고시에 없음'일 뿐 안전하다는 뜻이 아니다. listed_partners에 사용자가 말한 계열 성분이 있으면 그 이름으로 다시 조회한다.",
+         _obj({"drug_a": _STR, "drug_b": _STR}, ["drug_a", "drug_b"]), ("drug.check",), _interaction),
+    Tool("get_drug_safety_info",
+         "한 약물의 식약처 DUR 임부금기·노인주의·연령금기·용량주의·투여기간주의·효능군중복 정보를 조회한다(MCP). 약물명은 성분명(한글).",
+         _obj({"drug": _STR}, ["drug"]), ("drug.check",), _drug_safety),
     Tool("search_medical_literature",
          "PubMed에서 의학 논문을 검색한다(MCP). query는 반드시 영어 키워드/MeSH 용어로 쓴다(예: 'warfarin aspirin bleeding risk'). "
          "결과의 pmid, 연도, 논문 유형(pub_types), 초록을 근거로만 답한다.",

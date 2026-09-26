@@ -81,7 +81,7 @@ def test_chat_uses_configured_model_and_returns_sources(client, monkeypatch):
     monkeypatch.setattr("app.llm.chat", fake)
     r = client.post("/chat", json={"message": "토요일 진료시간은?"}, headers=login(client, "patient1")).json()
     assert r["sources"][0]["id"] == "D1" and r["model"] == "qwen/qwen3.7-flash" and "환자" in seen["system"]
-    assert seen["n_tools"] == 6  # 환자 노출 도구: 안내, 슬롯, 예약목록, 예약, 취소, 문진접수
+    assert seen["n_tools"] == 8  # 환자 노출 도구: 안내, 슬롯, 예약목록, 예약, 취소, 문진접수 + 약물 조회 2종
 
 
 def test_chat_requires_auth(client):
