@@ -21,6 +21,16 @@ from .prompts import system_prompt
 MAX_HISTORY, MAX_CONTENT = 10, 2000
 STEP_LIMIT_MSG = "요청을 처리하지 못했습니다. 질문을 더 구체적으로 다시 입력해 주세요."
 
+# 검증 실패 시 폐기하기 전에 한 번 다시 쓰게 한다 (예: 도구를 안 부르고 출처를 만든 경우 → 도구를 호출해 근거를 확인하도록)
+REPAIRABLE = {
+    "invalid_citation": "답변에 도구 결과에 없는 출처 번호([D#])가 있습니다. 도구를 호출하지 않았다면 출처를 쓰지 마세요.",
+    "invalid_pmid": "답변에 도구 결과에 없는 논문 번호(PMID)가 있습니다.",
+    "safety_assurance": "약물 병용·복용이 안전하다고 단정했습니다. 조회 결과는 고시 목록 기준일 뿐 안전을 보증하지 않습니다.",
+    "forbidden_claim": "확정 진단·처방·용량 결정 표현이 있습니다.",
+}
+REPAIR_PROMPT = ("[시스템 검증] {reason} 필요한 도구를 호출해 근거를 확인한 뒤, 확인된 내용과 출처만으로 다시 답하세요. "
+                 "근거를 확인할 수 없으면 '근거가 부족하여 답변드릴 수 없습니다'라고만 답하세요.")
+
 
 @dataclass
 class AgentResult:
@@ -58,6 +68,7 @@ def run_agent(conn, user: User, message: str, *, history=None, patient_id: int |
     usage = {"prompt_tokens": 0, "completion_tokens": 0}
     model = settings.model
     answer = None
+    repaired = False
 
     # 2) 도구 호출 루프
     for _ in range(settings.max_agent_steps):
@@ -69,6 +80,13 @@ def run_agent(conn, user: User, message: str, *, history=None, patient_id: int |
         tcs = msg.get("tool_calls") or []
         if not tcs:
             answer = (msg.get("content") or "").strip()
+            bad = next((e for e in guardrails.check_output(answer, sources, user_text=message).events if e in REPAIRABLE), None)
+            if bad and not repaired:  # 1회 자가 교정 (무한 재시도 방지)
+                repaired = True
+                events.append("self_repair")
+                messages += [{"role": "assistant", "content": answer}, {"role": "user", "content": REPAIR_PROMPT.format(reason=REPAIRABLE[bad])}]
+                answer = None
+                continue
             break
         messages.append({"role": "assistant", "content": msg.get("content"), "tool_calls": tcs})
         for tc in tcs:

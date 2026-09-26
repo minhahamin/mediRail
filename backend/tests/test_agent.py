@@ -58,14 +58,14 @@ def test_tool_loop_collects_sources_and_cites(conn):
 
 
 def test_invented_citation_is_replaced(conn):
-    llm = FakeLLM(("say", "140/90 이상이면 고혈압입니다 [D7]."))
-    r = agent.run_agent(conn, u(conn, "patient1"), "고혈압 기준이 뭐예요?", llm=llm)
-    assert "invalid_citation" in r.events and "[D7]" not in r.answer
+    bad = ("say", "140/90 이상이면 고혈압입니다 [D7].")
+    r = agent.run_agent(conn, u(conn, "patient1"), "고혈압 기준이 뭐예요?", llm=FakeLLM(bad, bad))   # 교정 후에도 반복되면 폐기
+    assert "self_repair" in r.events and "invalid_citation" in r.events and "[D7]" not in r.answer
 
 
 def test_confirmed_diagnosis_is_replaced(conn):
-    llm = FakeLLM(("say", "증상으로 보아 폐렴으로 확진입니다."))
-    r = agent.run_agent(conn, u(conn, "patient1"), "기침과 열이 있어요", llm=llm)
+    bad = ("say", "증상으로 보아 폐렴으로 확진입니다.")
+    r = agent.run_agent(conn, u(conn, "patient1"), "기침과 열이 있어요", llm=FakeLLM(bad, bad))
     assert "forbidden_claim" in r.events and "확진" not in r.answer
 
 
@@ -123,3 +123,39 @@ def test_audit_does_not_store_message_text(conn):
     secret = "제 주민번호는 900101-1234567 입니다"
     agent.run_agent(conn, u(conn, "patient1"), secret, llm=FakeLLM(("say", "확인했습니다.")))
     assert all("900101" not in (r["detail"] or "") for r in services.read_audit(conn, u(conn, "admin1")))
+
+
+# ---------- 자가 교정 (검증 실패 → 1회 재시도 → 그래도 위반이면 폐기) ----------
+class Capture(FakeLLM):
+    def __call__(self, messages, tools_=None):
+        self.last_messages = messages
+        return super().__call__(messages, tools_)
+
+
+def test_self_repair_recovers_when_model_calls_tool_after_feedback(conn):
+    """실제로 관찰된 실패: 도구를 부르지 않고 [D1]을 지어냄 → 피드백 후 도구를 호출해 올바르게 답한다."""
+    llm = Capture(("say", "실데나필과 질산염은 병용금기입니다 [D1]."),
+                  ("tool", "get_clinic_info", {}),
+                  ("say", "일요일은 휴진입니다 [D1]."))
+    r = agent.run_agent(conn, u(conn, "patient1"), "일요일에 진료해?", llm=llm)
+    assert r.events == ["self_repair", "disclaimer_added"] and r.answer.startswith("일요일은 휴진입니다 [D1].")
+    assert r.sources and "invalid_citation" not in r.events
+
+
+def test_repair_feedback_names_the_problem_and_is_sent_once(conn):
+    llm = Capture(("say", "고혈압 기준은 140/90입니다 [D7]."), ("say", "고혈압 기준은 140/90입니다 [D7]."), ("say", "이 줄은 나오면 안 됨"))
+    r = agent.run_agent(conn, u(conn, "patient1"), "고혈압 기준은?", llm=llm)
+    fb = [m["content"] for m in llm.last_messages if m["role"] == "user" and m["content"].startswith("[시스템 검증]")]
+    assert len(fb) == 1 and "출처 번호" in fb[0] and llm.calls == 2          # 재시도는 1회뿐
+    assert "invalid_citation" in r.events and "[D7]" not in r.answer
+
+
+def test_clean_answers_are_never_repaired(conn):
+    r = agent.run_agent(conn, u(conn, "patient1"), "안녕하세요", llm=FakeLLM(("say", "안녕하세요. 무엇을 도와드릴까요?")))
+    assert "self_repair" not in r.events
+
+
+def test_repair_for_safe_claim(conn):
+    llm = FakeLLM(("say", "두 약은 같이 복용해도 안전합니다."), ("say", "고시 목록에는 없지만 안전을 보증할 수는 없습니다. 의사·약사와 상의하세요."))
+    r = agent.run_agent(conn, u(conn, "patient1"), "같이 먹어도 돼?", llm=llm)
+    assert r.events[0] == "self_repair" and "safety_assurance" not in r.events and "보증할 수는 없습니다" in r.answer

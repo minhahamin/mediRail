@@ -108,8 +108,8 @@ def test_agent_literature_flow_with_valid_pmid(conn, bridge):
 
 
 def test_agent_blocks_hallucinated_pmid(conn, bridge):
-    llm = FakeLLM(("tool", "search_medical_literature", {"query": "warfarin"}),
-                  ("say", "PMID 55555555 연구에서 아스피린 병용은 안전하다고 보고했습니다 [D1]."))
+    bad = ("say", "PMID 55555555 연구에서 아스피린 병용은 출혈이 없다고 보고했습니다 [D1].")
+    llm = FakeLLM(("tool", "search_medical_literature", {"query": "warfarin"}), bad, bad)
     r = agent.run_agent(conn, u(conn, "doctor1"), "문헌 근거 알려줘", llm=llm)
     assert "invalid_pmid" in r.events and "55555555" not in r.answer
 
