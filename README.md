@@ -5,16 +5,16 @@
 
 이름의 **Rail**은 가드레일(guardrail)입니다. LLM의 능력을 쓰되, 안전은 프롬프트가 아니라 **코드 레벨의 레일**로 보장하는 것이 이 프로젝트의 핵심 주제입니다.
 
-> ⚠️ 포트폴리오/학습용 프로젝트입니다. 모든 환자·진료 데이터는 **합성 데이터**이며 실제 의료 서비스에 사용할 수 없습니다.
+> 포트폴리오/학습용 프로젝트입니다. 모든 환자·진료 데이터는 **합성 데이터**이며 실제 의료 서비스에 사용할 수 없습니다.
 
-> 🌐 **라이브 데모: <https://medirail-web-production.up.railway.app>**
+> **라이브 데모: <https://medirail-web-production.up.railway.app>**
 > 로그인 화면 아래의 **데모 계정**(환자·간호사·의사·원무)으로 바로 체험할 수 있고, 회원가입은 환자 계정만 가능합니다. (Railway: 웹 + API + PostgreSQL)
 
 | 로그인 — 아래에 데모 계정 | 회원가입 (환자 전용) |
 |:-:|:-:|
 | ![로그인](docs/screenshots/login.png) | ![회원가입](docs/screenshots/signup.png) |
-| **의사: PubMed 문헌 검색 (MCP)** | **환자 화면** |
-| ![의사 문헌 검색](docs/screenshots/doctor-literature.png) | ![환자 화면](docs/screenshots/patient-home.png) |
+| **의사: PubMed 문헌 검색 (MCP)** | **환자: 응급 문장은 LLM 없이 즉시 119 안내** |
+| ![의사 문헌 검색](docs/screenshots/doctor-literature.png) | ![환자: 응급 즉시 안내](docs/screenshots/patient-emergency.png) |
 
 ---
 
@@ -57,14 +57,14 @@
 
 ```mermaid
 flowchart TB
-    subgraph Client["👤 클라이언트 (React · Railway 웹)"]
+    subgraph Client["클라이언트 (React · Railway 웹)"]
         UI["역할별 화면<br/>환자 · 의사 · 간호사 · 원무"]
     end
 
-    subgraph API["⚙️ FastAPI 백엔드"]
+    subgraph API["FastAPI 백엔드"]
         AUTH["인증/인가<br/>JWT + RBAC 의존성"]
         ROUTES["REST 라우트<br/>/auth · /chat · /appointments · /patients · /soap · /audit<br/>요청 제한 (사용자·IP·일일)"]
-        subgraph AGENT["🤖 에이전트 (agent.py)"]
+        subgraph AGENT["에이전트 (agent.py)"]
             PRE["① 응급 사전 차단<br/>(환자 입력)"]
             LOOP["② 도구 호출 루프<br/>(최대 6 step)"]
             POST["③ 출력 사후 검증<br/>+ 1회 자가 교정"]
@@ -73,23 +73,23 @@ flowchart TB
         SVC["서비스 계층 (services.py)<br/>권한·소유권·업무 규칙의 단일 지점"]
         GR["가드레일 (guardrails.py)"]
         BRIDGE["MCP 브리지 (mcp_bridge.py)<br/>서버별 격리 · 지연 기동 · 자동 재기동"]
-        SK["📚 스킬 (skills/*/SKILL.md)<br/>역할별 절차 지식"]
+        SK["스킬 (skills/*/SKILL.md)<br/>역할별 절차 지식"]
     end
 
-    subgraph Data["🗄️ 데이터"]
+    subgraph Data["데이터"]
         DB[("PostgreSQL (배포) / SQLite (개발)<br/>합성 환자·진료·예약<br/>감사 로그")]
     end
 
-    subgraph LLM["🧠 LLM"]
+    subgraph LLM["LLM"]
         OR["OpenRouter<br/>기본: qwen3.7-flash<br/>(설정으로 교체)"]
     end
 
-    subgraph MCP["🔌 MCP 서버 (stdio 서브프로세스)"]
+    subgraph MCP["MCP 서버 (stdio 서브프로세스)"]
         PUB["pubmed<br/>search_pubmed<br/>get_pubmed_article"]
         DUR["mfds_dur<br/>check_drug_interaction<br/>get_drug_safety_info"]
     end
 
-    subgraph EXT["🌐 외부 공개 데이터"]
+    subgraph EXT["외부 공개 데이터"]
         NCBI["NCBI E-utilities<br/>(PubMed)"]
         MFDS["식약처 DUR OpenAPI<br/>(공공데이터포털)"]
         CACHE[("로컬 인덱스 캐시<br/>30일")]
@@ -123,16 +123,16 @@ flowchart TB
 
 | 계층 | 파일 | 책임 | LLM 의존 |
 |---|---|---|---|
-| 인증/인가 | `auth.py`, `rbac.py` | JWT 발급/검증, 역할→권한 매핑 (역할은 토큰이 아니라 **DB 기준**) | ✗ |
-| 가드레일 | `guardrails.py` | 응급 감지, 없는 인용/논문 번호/확정 진단/안전 단정 차단, 면책 문구 | ✗ |
-| 서비스 | `services.py` | 모든 도메인 로직과 권한 검사. REST·도구가 **공유** | ✗ |
-| 도구 | `tools.py` | 서비스·MCP를 감싼 얇은 어댑터 + 출처 제목 | ✗ |
-| MCP 브리지 | `mcp_bridge.py` | 외부 지식 서버 호출, 장애 격리·재기동 | ✗ |
-| MCP 서버 | `mcp_servers/*` | PubMed, 식약처 DUR (독립 실행 가능, 어떤 MCP 클라이언트에서도 사용) | ✗ |
-| 요청 제한 | `ratelimit.py` | 사용자별·IP별·일일 전체 상한 (공개 데모의 LLM 비용 남용 방지). 응급 안내는 제한하지 않음 | ✗ |
-| 스킬 | `skills.py`, `skills/*/SKILL.md` | 역할별 절차 지식(SOAP·문진·약물·문헌·응급)을 표준 SKILL.md로 관리하고 시스템 프롬프트에 주입 | ✗ |
-| DB | `db.py` | SQLite(개발)·PostgreSQL(배포) 겸용 어댑터. 서비스 코드는 두 DB를 구분하지 않음 | ✗ |
-| 에이전트 | `agent.py`, `prompts.py`, `llm.py` | 대화 루프, 자가 교정, 프롬프트, 모델 호출 | ✓ (여기만) |
+| 인증/인가 | `auth.py`, `rbac.py` | JWT 발급/검증, 역할→권한 매핑 (역할은 토큰이 아니라 **DB 기준**) | |
+| 가드레일 | `guardrails.py` | 응급 감지, 없는 인용/논문 번호/확정 진단/안전 단정 차단, 면책 문구 | |
+| 서비스 | `services.py` | 모든 도메인 로직과 권한 검사. REST·도구가 **공유** | |
+| 도구 | `tools.py` | 서비스·MCP를 감싼 얇은 어댑터 + 출처 제목 | |
+| MCP 브리지 | `mcp_bridge.py` | 외부 지식 서버 호출, 장애 격리·재기동 | |
+| MCP 서버 | `mcp_servers/*` | PubMed, 식약처 DUR (독립 실행 가능, 어떤 MCP 클라이언트에서도 사용) | |
+| 요청 제한 | `ratelimit.py` | 사용자별·IP별·일일 전체 상한 (공개 데모의 LLM 비용 남용 방지). 응급 안내는 제한하지 않음 | |
+| 스킬 | `skills.py`, `skills/*/SKILL.md` | 역할별 절차 지식(SOAP·문진·약물·문헌·응급)을 표준 SKILL.md로 관리하고 시스템 프롬프트에 주입 | |
+| DB | `db.py` | SQLite(개발)·PostgreSQL(배포) 겸용 어댑터. 서비스 코드는 두 DB를 구분하지 않음 | |
+| 에이전트 | `agent.py`, `prompts.py`, `llm.py` | 대화 루프, 자가 교정, 프롬프트, 모델 호출 | (여기만) |
 
 **LLM에 의존하는 부분을 `agent.py` 하나로 격리**했기 때문에, 모델을 바꾸거나 LLM이 오작동해도 안전 속성은 그대로 유지됩니다.
 
@@ -157,7 +157,7 @@ sequenceDiagram
     API->>API: JWT 검증 · chat 권한 확인
     API->>G: detect_emergency(입력)
     alt 응급 키워드 (예: "가슴이 쥐어짜듯 아파요")
-        G-->>P: 🚨 119 안내 (LLM 호출 없음 · 비용 0 · 결정적)
+        G-->>P: 119 안내 (LLM 호출 없음 · 비용 0 · 결정적)
     else 일반 요청
         API->>A: run_agent(user, message)
         A->>L: system(역할별 프롬프트+달력) + 환자용 도구 8종
@@ -168,7 +168,7 @@ sequenceDiagram
         A->>L: tool 결과 전달
         L-->>A: "토요일은 13:00까지라 불가합니다 [D1]"
         A->>G: check_output(답변, 출처 목록)
-        G-->>A: 인용 유효 ✓ · 확정 진단 없음 ✓ · 면책 문구 추가
+        G-->>A: 인용 유효 · 확정 진단 없음 · 면책 문구 추가
         A->>DB: audit_log (도구·이벤트만, 입력 원문 미저장)
         A-->>P: 답변 + 출처 목록 + 가드레일 이벤트
     end
@@ -182,7 +182,7 @@ sequenceDiagram
 flowchart TD
     Q["의사: 실데나필 복용 환자에게<br/>질산염제 병용 가능한가요?"] --> L1["LLM: 도구를 호출하지 않고<br/>'[D1]'을 지어내 답변"]
     L1 --> C1{"출력 검증"}
-    C1 -->|"없는 출처 감지"| R["🔁 자가 교정 (1회 한정)<br/>'도구를 호출해 근거를 확인하세요'"]
+    C1 -->|"없는 출처 감지"| R["자가 교정 (1회 한정)<br/>'도구를 호출해 근거를 확인하세요'"]
     R --> T["check_drug_interaction 호출"]
     T --> B["MCP 브리지 → 식약처 DUR 서버"]
     B --> D{"결과"}
@@ -202,7 +202,7 @@ flowchart LR
     Q["환자: '박서연 님<br/>문진 기록 보여줘'"] --> L1
     L1["① 도구 목록<br/>get_patient_intake가<br/>환자에게 노출되지 않음"] -->|LLM이 그래도 호출 시도| L2
     L2["② execute()<br/>역할 권한 재검사<br/>→ 거부 + 감사 로그"] -->|우회 시도| L3
-    L3["③ services 계층<br/>본인 patient_id가 아니면<br/>PermissionDenied"] --> R["🛑 접근 차단<br/>security.* 감사 로그"]
+    L3["③ services 계층<br/>본인 patient_id가 아니면<br/>PermissionDenied"] --> R["접근 차단<br/>security.* 감사 로그"]
 ```
 
 프롬프트("다른 환자 정보는 주지 마")에만 의존하지 않고, **세 겹의 코드 검사**가 독립적으로 막습니다. 각 계층은 테스트로 검증됩니다.
@@ -213,19 +213,21 @@ flowchart LR
 
 | 권한 | 환자 | 간호사 | 의사 | 원무 |
 |---|:-:|:-:|:-:|:-:|
-| 채팅 (`chat`) | ✅ | ✅ | ✅ | ✅ |
-| 본인 예약 조회/예약/취소, 문진 접수 | ✅ | – | – | – |
-| 전체 예약 조회 | – | ✅ | ✅ | ✅ |
-| 예약 대행 생성/취소 (`appointment.manage_all`) | – | – | – | ✅ |
-| 환자 인적사항 | – | ✅ | ✅ | ✅ |
-| **알레르기·복용약** (임상 필드) | – | ✅ | ✅ | **❌** |
-| 문진 원문 조회 | – | ✅ | ✅ | ❌ |
-| 진료 기록 조회 | – | ❌ | ✅ | ❌ |
-| SOAP **초안** 작성 (AI 보조) | – | ❌ | ✅ | ❌ |
-| SOAP **승인** | – | ❌ | ✅ (REST 전용) | ❌ |
-| 의학 문헌 검색 (PubMed) | ❌ | ✅ | ✅ | ❌ |
-| 약물 상호작용·안전 정보 조회 (식약처 DUR) | ✅ | ✅ | ✅ | ❌ |
-| 감사 로그 조회 | – | – | – | ✅ |
+| 채팅 (`chat`) | ● | ● | ● | ● |
+| 본인 예약 조회/예약/취소, 문진 접수 | ● | – | – | – |
+| 전체 예약 조회 | – | ● | ● | ● |
+| 예약 대행 생성/취소 (`appointment.manage_all`) | – | – | – | ● |
+| 환자 인적사항 | – | ● | ● | ● |
+| **알레르기·복용약** (임상 필드) | – | ● | ● | **** |
+| 문진 원문 조회 | – | ● | ● | |
+| 진료 기록 조회 | – | | ● | |
+| SOAP **초안** 작성 (AI 보조) | – | | ● | |
+| SOAP **승인** | – | | ● (REST 전용) | |
+| 의학 문헌 검색 (PubMed) | | ● | ● | |
+| 약물 상호작용·안전 정보 조회 (식약처 DUR) | ● | ● | ● | |
+| 감사 로그 조회 | – | – | – | ● |
+
+범례: ● 허용 · – 해당 없음 · ✕ 차단(임상 정보 등)
 
 - **필드 단위 접근 제어**: 같은 `GET /patients/{id}`라도 원무에게는 이름·성별만, 의료진에게는 알레르기·복용약까지 반환합니다.
 - **직무 분리**: 원무는 예약을 다루지만 임상 정보는 볼 수 없고, 의사는 초안을 만들 수 있지만 감사 로그는 볼 수 없습니다.
@@ -349,7 +351,7 @@ claude mcp add mfds-dur -- python -m mcp_servers.mfds_dur.server     # DATA_GO_K
 
 | 발견 | 원인 | 조치 |
 |---|---|---|
-| 🔴 **병용금기를 "주의 조합, 금기 아님"으로 안내** (심바스타틴+클래리트로마이신) | (추정) LLM이 DUR 표기와 다른 철자(예: "클라리스로마이신")로 호출 → 표기 불일치로 미탐 → 모델이 상대 목록을 잘못 해석. 이 철자로 호출하면 동일 증상이 재현됨 | 유사 표기는 **놓치지 않도록 후보를 찾아 `needs_confirmation`** 으로 결과와 함께 반환 (자동 확정은 하지 않음 — 다른 약과 구분 불가, 아래 참조). `contraindicated`를 약화하지 못하게 규정. **실제 사고를 재현하는 회귀 테스트** |
+| **병용금기를 "주의 조합, 금기 아님"으로 안내** (심바스타틴+클래리트로마이신) | (추정) LLM이 DUR 표기와 다른 철자(예: "클라리스로마이신")로 호출 → 표기 불일치로 미탐 → 모델이 상대 목록을 잘못 해석. 이 철자로 호출하면 동일 증상이 재현됨 | 유사 표기는 **놓치지 않도록 후보를 찾아 `needs_confirmation`** 으로 결과와 함께 반환 (자동 확정은 하지 않음 — 다른 약과 구분 불가, 아래 참조). `contraindicated`를 약화하지 못하게 규정. **실제 사고를 재현하는 회귀 테스트** |
 | 자동 매칭 임계값이 **다른 약을 같은 약으로** 단정할 뻔함 | 실제 데이터로 검증하니 로바스타틴↔로수바스타틴 0.92, 에리트로마이신↔텔리트로마이신 0.90 — 유사도로는 표기 변형(0.89)과 다른 약을 구분할 수 없음 | 자동 확정 폐기 → 후보 제시 + LLM이 같은 약인지 판단해 정확한 이름으로 재조회 |
 | 품목서비스로 쌍당 2~10초 | 79만 행 데이터를 대표 품목으로 우회 | **성분서비스가 1,836행뿐**임을 발견 → 전체 로컬 인덱스 (첫 조회 1.3초, 이후 즉시). 삭제 고시(65행) 제외, 양방향 검색 |
 | Railway 첫 배포 실패 (로그 없음) | 저장소 루트에서 빌더가 Railpack(자동 감지)으로 잡힘 | `RAILWAY_DOCKERFILE_PATH`로 Dockerfile 명시 |
@@ -406,7 +408,7 @@ erDiagram
 
 | 모델 | 정확도 | 근거 인용 | 환각률↓ | 거절 정확도 | 비용/45문항 | 지연 |
 |---|---|---|---|---|---|---|
-| **qwen3.7-flash** ⭐ | 98% | 100% | 2% | 97% | $0.0009 | 1.5s |
+| **qwen3.7-flash** (기본) | 98% | 100% | 2% | 97% | $0.0009 | 1.5s |
 | deepseek-v4-flash | 97% | 100% | 0% | 90% | $0.0014 | 2.6s |
 | gemini-2.5-flash-lite | 96% | 100% | 0% | 95% | $0.0030 | 1.0s |
 | gpt-5-nano | 97% | 72% | 4% | 90% | $0.0052 | 2.2s |
@@ -521,7 +523,7 @@ python eval/selftest.py                              # 채점기 검증 (비용 
 
 ```mermaid
 flowchart LR
-    U["👤 브라우저"] -->|HTTPS| W["medirail-web<br/>nginx · React 정적 빌드<br/>SPA 폴백 · 보안 헤더"]
+    U["브라우저"] -->|HTTPS| W["medirail-web<br/>nginx · React 정적 빌드<br/>SPA 폴백 · 보안 헤더"]
     U -->|HTTPS · JWT · CORS 허용 출처 1개| A
     subgraph R["Railway 프로젝트: medirail"]
         W
