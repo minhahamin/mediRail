@@ -103,8 +103,8 @@ export function ErrorNote({ children }: { children: ReactNode }) {
   );
 }
 
-export const ROLE_LABEL: Record<string, string> = { patient: "환자", doctor: "의사", nurse: "간호사", admin: "원무" };
-export const ROLE_ICON: Record<string, IconName> = { patient: "sprout", doctor: "stethoscope", nurse: "heart", admin: "folder" };
+export const ROLE_LABEL: Record<string, string> = { patient: "환자", doctor: "의사", nurse: "간호사", admin: "원무", superadmin: "시스템 관리자" };
+export const ROLE_ICON: Record<string, IconName> = { patient: "sprout", doctor: "stethoscope", nurse: "heart", admin: "folder", superadmin: "shield" };
 
 export function fmtSlot(slot: string): string {
   const [d, t] = slot.split(" ");

@@ -340,3 +340,11 @@ h3 .icon { color: var(--gd); }
 .note + .muted { margin-top: 14px; }
 .accounts + .switch, .win-body > .switch { margin-top: 16px; }
 .switch + .switch { margin-top: 6px; }
+
+/* ---------- 관리자 콘솔 ---------- */
+.stat-n { font-family: var(--font-title); font-size: 30px; line-height: 1.2; color: var(--gd); overflow-wrap: anywhere; }
+.stats { margin-bottom: 16px; }
+.bar { height: 16px; border: 2px solid var(--gd); border-radius: 99px; background: var(--gl); overflow: hidden; margin: 6px 0; }
+.bar i { display: block; height: 100%; background: var(--g); }
+.field.sm { padding: 3px 8px; width: auto; }
+.note.warn .icon { color: var(--warn-ink); }

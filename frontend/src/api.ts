@@ -1,5 +1,5 @@
 import type {
-  Appointment, AuditRow, ChatResponse, DemoAccount, Encounter, Intake, PatientLite, PatientProfile, Session, SoapNote,
+  AdminStats, AdminUser, Appointment, AuditRow, BreakGlassResult, ChatResponse, DemoAccount, Encounter, Intake, PatientLite, PatientProfile, Session, SoapNote,
 } from "./types";
 
 export const API_URL: string = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") || "http://127.0.0.1:8000";
@@ -54,12 +54,12 @@ const post = <T>(path: string, body?: unknown) => request<T>(path, { method: "PO
 export const api = {
   demoAccounts: () => request<DemoAccount[]>("/auth/demo-accounts"),
   register: async (body: { username: string; password: string; name: string; birth_year: number; sex: "F" | "M"; allergies: string; medications: string }): Promise<Session> => {
-    const r = await post<{ access_token: string; role: Session["role"]; name: string; patient_id: number | null }>("/auth/register", body);
-    return { token: r.access_token, role: r.role, name: r.name, patientId: r.patient_id };
+    const r = await post<{ access_token: string; role: Session["role"]; name: string; patient_id: number | null; read_only?: boolean }>("/auth/register", body);
+    return { token: r.access_token, role: r.role, name: r.name, patientId: r.patient_id, readOnly: !!r.read_only };
   },
   login: async (username: string, password: string): Promise<Session> => {
-    const r = await post<{ access_token: string; role: Session["role"]; name: string; patient_id: number | null }>("/auth/login", { username, password });
-    return { token: r.access_token, role: r.role, name: r.name, patientId: r.patient_id };
+    const r = await post<{ access_token: string; role: Session["role"]; name: string; patient_id: number | null; read_only?: boolean }>("/auth/login", { username, password });
+    return { token: r.access_token, role: r.role, name: r.name, patientId: r.patient_id, readOnly: !!r.read_only };
   },
   chat: (message: string, history: { role: string; content: string }[], patientId: number | null) =>
     post<ChatResponse>("/chat", { message, history, patient_id: patientId }),
@@ -74,4 +74,11 @@ export const api = {
   soaps: (status?: string) => request<SoapNote[]>(`/soap${status ? `?status=${status}` : ""}`),
   approve: (id: number) => post<{ status: string }>(`/soap/${id}/approve`),
   audit: () => request<AuditRow[]>("/audit?limit=200"),
+  me: () => request<{ id: number; username: string; role: string }>("/me"),
+  adminUsers: () => request<AdminUser[]>("/admin/users"),
+  setRole: (id: number, role: string) => request<{ changed: boolean }>(`/admin/users/${id}/role`, { method: "PATCH", body: JSON.stringify({ role }) }),
+  disableUser: (id: number) => post<{ disabled: boolean }>(`/admin/users/${id}/disable`),
+  enableUser: (id: number) => post<{ disabled: boolean }>(`/admin/users/${id}/enable`),
+  adminStats: () => request<AdminStats>("/admin/stats"),
+  breakGlass: (patientId: number, reason: string) => post<BreakGlassResult>("/admin/break-glass", { patient_id: patientId, reason }),
 };

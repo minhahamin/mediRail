@@ -46,8 +46,9 @@ const ROLE_DESC: Record<Role, string> = {
   nurse: "문진 요약, 예약 현황, 문헌·약물 조회",
   doctor: "문진 요약, SOAP 초안·승인, 문헌·약물 조회",
   admin: "예약 대행, 감사 로그 (임상 정보 접근 불가)",
+  superadmin: "사용자·권한 관리, 시스템 현황, 사유를 남기는 임상 열람 (읽기 전용으로 체험)",
 };
-const ROLE_NAME: Record<Role, string> = { patient: "환자", nurse: "간호사", doctor: "의사", admin: "원무" };
+const ROLE_NAME: Record<Role, string> = { patient: "환자", nurse: "간호사", doctor: "의사", admin: "원무", superadmin: "시스템 관리자" };
 
 export function Login({ onLogin }: { onLogin: (s: Session) => void }) {
   const [username, setUsername] = useState("");

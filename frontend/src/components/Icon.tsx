@@ -93,6 +93,12 @@ const PATHS = {
       <path d="M14.5 6.3l3.2 3.2" />
     </>
   ),
+  chart: (
+    <>
+      <path d="M5 20V11M11 20V5M17 20v-7" />
+      <path d="M2.5 20.5h19" />
+    </>
+  ),
   check: <path d="M5 12.5l4.5 4.5L19 7.5" />,
   users: (
     <>
