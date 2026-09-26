@@ -105,6 +105,20 @@ def _clean_text(s) -> str:
     return re.sub(r"\s+", " ", (s or "")).strip()
 
 
+def list_demo_accounts(conn) -> list[dict]:
+    """데모 체험 화면에 보여줄 계정. 코드에 박아 둔 목록이 아니라 users 테이블에서 조회한다 (역할별 첫 계정).
+    비밀번호나 해시는 돌려주지 않는다."""
+    from .seed import USERS
+
+    names = [u[0] for u in USERS]
+    rows = conn.execute(f"SELECT username, role, name FROM users WHERE username IN ({','.join('?' for _ in names)}) ORDER BY id", names)
+    order = ["patient", "nurse", "doctor", "admin"]
+    first: dict = {}
+    for r in rows:
+        first.setdefault(r["role"], {"username": r["username"], "role": r["role"], "name": r["name"]})
+    return sorted(first.values(), key=lambda x: order.index(x["role"]))
+
+
 # ---------- 환자 정보 ----------
 def list_patients(conn, actor: User) -> list[dict]:
     _need(actor, "patient.read_demographics")

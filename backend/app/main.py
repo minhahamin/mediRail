@@ -117,6 +117,12 @@ def register(body: RegisterIn, request: Request, conn=Depends(db.get_db)):
     return {"access_token": create_token(user), "role": user.role, "name": user.name, "patient_id": user.patient_id}
 
 
+@app.get("/auth/demo-accounts")
+def demo_accounts(conn=Depends(db.get_db)):
+    """로그인 전에 볼 수 있는 데모 계정 목록 (DB에서 조회)."""
+    return services.list_demo_accounts(conn)
+
+
 @app.get("/me")
 def me(user: User = Depends(current_user)):
     return user
