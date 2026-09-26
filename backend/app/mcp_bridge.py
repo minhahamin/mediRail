@@ -2,6 +2,7 @@
 
 - 에이전트 루프는 동기 코드라서, 전용 스레드의 asyncio 루프에 MCP 세션을 유지하고 call()이 이를 호출한다.
 - 서버는 첫 호출 때 지연 기동한다 (앱 시작/테스트 속도에 영향 없음). 세션은 재사용한다.
+- 서버는 개별로 기동한다. 한 서버가 시작에 실패해도 나머지는 정상 동작하고, 실패한 서버는 다음 호출 때 한 번 재시도한다.
 - 서버 프로세스가 죽거나 통신이 끊기면 브리지를 리셋하고, 다음 호출에서 다시 기동한다.
 - MCP 도구가 오류를 돌려주면(is_error) McpToolError, 통신/기동 문제면 McpError.
 """
@@ -37,6 +38,7 @@ class McpBridge:
         self._stop: asyncio.Event | None = None
         self._ready = threading.Event()
         self._error: Exception | None = None
+        self._errors: dict[str, str] = {}  # 서버별 기동 실패 사유
         self._lock = threading.Lock()
 
     # ---------- 수명 주기 ----------
@@ -61,9 +63,16 @@ class McpBridge:
         try:
             async with AsyncExitStack() as stack:
                 for name, params in self._servers.items():
-                    read, write = await stack.enter_async_context(stdio_client(params))
-                    session = await stack.enter_async_context(ClientSession(read, write))
-                    await session.initialize()
+                    sub = AsyncExitStack()  # 서버별 격리: 실패 시 그 서버의 프로세스만 정리한다
+                    try:
+                        read, write = await sub.enter_async_context(stdio_client(params))
+                        session = await sub.enter_async_context(ClientSession(read, write))
+                        await session.initialize()
+                    except BaseException as e:  # noqa: BLE001
+                        self._errors[name] = f"{type(e).__name__}: {e}"[:200]
+                        await sub.aclose()
+                        continue
+                    await stack.enter_async_context(sub)
                     self._sessions[name] = session
                 self._ready.set()
                 await self._stop.wait()
@@ -79,6 +88,7 @@ class McpBridge:
             self._thread.join(timeout=5)
         self._thread = self._loop = self._stop = None
         self._sessions.clear()
+        self._errors.clear()
 
     def close(self) -> None:
         with self._lock:
@@ -90,8 +100,12 @@ class McpBridge:
             raise McpError(f"등록되지 않은 MCP 서버: {server}")
         self._ensure_started()
         session = self._sessions.get(server)
+        if session is None:  # 이 서버만 기동에 실패했던 경우: 한 번 재기동해 본다
+            self.close()
+            self._ensure_started()
+            session = self._sessions.get(server)
         if session is None or self._loop is None:
-            raise McpError("MCP 세션이 준비되지 않았습니다")
+            raise McpError(f"{server} MCP 서버를 사용할 수 없습니다: {self._errors.get(server, '알 수 없는 오류')}")
         fut = asyncio.run_coroutine_threadsafe(session.call_tool(tool, arguments), self._loop)
         try:
             result = fut.result(timeout)
@@ -118,6 +132,8 @@ def default_servers() -> dict[str, StdioServerParameters]:
     return {
         "pubmed": StdioServerParameters(
             command=sys.executable, args=["-m", "mcp_servers.pubmed.server"], cwd=str(ROOT), env=dict(os.environ)),
+        "mfds_dur": StdioServerParameters(
+            command=sys.executable, args=["-m", "mcp_servers.mfds_dur.server"], cwd=str(ROOT), env=dict(os.environ)),
     }
 
 

@@ -66,6 +66,19 @@ def test_startup_failure_is_reported():
     b.close()
 
 
-def test_default_servers_registers_pubmed():
-    s = default_servers()["pubmed"]
-    assert s.args == ["-m", "mcp_servers.pubmed.server"] and s.cwd
+def test_default_servers_registers_pubmed_and_dur():
+    servers = default_servers()
+    assert servers["pubmed"].args == ["-m", "mcp_servers.pubmed.server"] and servers["pubmed"].cwd
+    assert servers["mfds_dur"].args == ["-m", "mcp_servers.mfds_dur.server"]
+
+
+def test_one_failing_server_does_not_break_the_others():
+    b = McpBridge({"ok": StdioServerParameters(command=sys.executable, args=[FAKE]),
+                   "bad": StdioServerParameters(command=sys.executable, args=["-c", "import sys; sys.exit(3)"])}, start_timeout=30)
+    try:
+        assert b.call("ok", "echo", {"text": "hi"})["echo"] == "hi"          # 정상 서버는 그대로 동작
+        with pytest.raises(McpError, match="bad MCP 서버를 사용할 수 없습니다"):
+            b.call("bad", "x", {})
+        assert b.call("ok", "echo", {"text": "again"})["echo"] == "again"    # 실패한 서버 재시도 뒤에도 정상 서버 유지
+    finally:
+        b.close()
