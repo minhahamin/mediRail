@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+__pycache__/
+.venv/
+node_modules/
+dist/
+*.db
+eval/cache/
+eval/results/
