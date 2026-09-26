@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError } from "../api";
 import type { Appointment, PatientLite, Session } from "../types";
+import { Icon } from "./Icon";
 import { Empty, ErrorNote, Heart, Notebook, Spinner, Window, fmtSlot } from "./ui";
 
 const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
@@ -78,7 +79,7 @@ export function Appointments({ session, patients }: { session: Session; patients
 
   return (
     <div className="stack">
-      <Window title={<>📅 {session.role === "patient" ? "내 예약" : "예약 현황"}</>}>
+      <Window title={<><Icon name="calendar" /> {session.role === "patient" ? "내 예약" : "예약 현황"}</>}>
         {error && <ErrorNote>{error}</ErrorNote>}
         {notice && <div className="note">{notice}</div>}
         {!list ? (
@@ -109,7 +110,7 @@ export function Appointments({ session, patients }: { session: Session; patients
       </Window>
 
       {canBook && (
-        <Window title={<>✏️ {session.role === "admin" ? "예약 대행" : "새 예약"}</>}>
+        <Window title={<><Icon name="pencil" /> {session.role === "admin" ? "예약 대행" : "새 예약"}</>}>
           <Notebook tape>
             <div className="row">
               {session.role === "admin" && (

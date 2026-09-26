@@ -2,6 +2,7 @@ import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { api, ApiError } from "../api";
 import { navigate } from "../router";
 import type { Role, Session } from "../types";
+import { Icon } from "./Icon";
 import { ErrorNote, Heart, Pin, ROLE_ICON, Sparkle, Tape, Window } from "./ui";
 
 /* ---------- 공통 셸 ---------- */
@@ -73,7 +74,7 @@ export function Login({ onLogin }: { onLogin: (s: Session) => void }) {
 
   return (
     <AuthShell>
-      <Window title="🔑 로그인" className="auth-card">
+      <Window title={<><Icon name="key" /> 로그인</>} className="auth-card">
         <form className="stack" onSubmit={onSubmit} noValidate>
           <Field label="아이디">
             {(id) => <input id={id} className="field" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" autoCapitalize="none" required />}
@@ -94,13 +95,13 @@ export function Login({ onLogin }: { onLogin: (s: Session) => void }) {
         </form>
       </Window>
 
-      <Window title="🎀 데모 계정으로 바로 체험하기">
+      <Window title={<><Icon name="users" /> 데모 계정으로 바로 체험하기</>}>
         <p className="muted" style={{ marginTop: 0 }}>역할마다 보이는 화면과 권한이 다릅니다. 클릭하면 바로 입장합니다. (비밀번호 <code>demo1234</code>)</p>
         <div className="accounts">
           {DEMOS.map((d, i) => (
             <button key={d.username} type="button" className="account" disabled={busy} onClick={() => void submit(d.username, "demo1234")}>
               {i % 2 === 0 ? <Tape /> : <Pin />}
-              <span className="emoji">{ROLE_ICON[d.role]}</span>
+              <span className="role-badge"><Icon name={ROLE_ICON[d.role]} /></span>
               <strong>{ROLE_NAME[d.role]}</strong>
               <small>{d.name} · {d.username}</small>
               <small>{d.desc}</small>
@@ -181,7 +182,7 @@ export function Signup({ onLogin }: { onLogin: (s: Session) => void }) {
 
   return (
     <AuthShell>
-      <Window title="🌱 회원가입 (환자 계정)" className="auth-card wide">
+      <Window title={<><Icon name="sprout" /> 회원가입 (환자 계정)</>} className="auth-card wide">
         <form className="stack" onSubmit={onSubmit} noValidate>
           <div className="note">
             <b>환자 계정</b>만 만들 수 있습니다. 의사·간호사·원무 화면은 <button type="button" className="link" onClick={() => navigate("/login")}>데모 계정</button>으로 체험하세요.

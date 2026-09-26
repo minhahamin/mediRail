@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../api";
 import { RichText } from "../render";
 import type { ChatMessage, PatientLite, Role, Session } from "../types";
+import { Icon, type IconName } from "./Icon";
 import { Pin, Window } from "./ui";
 
 const SUGGESTIONS: Record<Role, string[]> = {
@@ -11,17 +12,17 @@ const SUGGESTIONS: Record<Role, string[]> = {
   admin: ["내일 예약 현황 알려줘", "토요일 진료시간이 어떻게 돼?", "1번 환자 알레르기 알려줘"],
 };
 
-const EVENT_LABEL: Record<string, { text: string; warn?: boolean }> = {
-  self_repair: { text: "🔁 자가 교정 (검증 실패 → 재작성)" },
-  disclaimer_added: { text: "면책 문구 자동 추가" },
-  uncited: { text: "근거 목록 자동 첨부" },
-  invalid_citation: { text: "🛑 출처 검증 실패 → 폐기", warn: true },
-  invalid_pmid: { text: "🛑 논문 번호 검증 실패 → 폐기", warn: true },
-  forbidden_claim: { text: "🛑 확정 진단·처방 표현 차단", warn: true },
-  safety_assurance: { text: "🛑 '안전' 단정 표현 차단", warn: true },
-  tool_denied: { text: "🛑 권한 없는 도구 호출 차단", warn: true },
-  emergency_short_circuit: { text: "🚨 응급 즉시 안내 (LLM 호출 없음)", warn: true },
-  emergency_keyword_staff: { text: "응급 키워드 감지 (의료진 대화)" },
+const EVENT_LABEL: Record<string, { text: string; icon?: IconName; warn?: boolean }> = {
+  self_repair: { icon: "repeat", text: "자가 교정 (검증 실패 → 재작성)" },
+  disclaimer_added: { icon: "check", text: "면책 문구 자동 추가" },
+  uncited: { icon: "note", text: "근거 목록 자동 첨부" },
+  invalid_citation: { icon: "ban", text: "출처 검증 실패 → 폐기", warn: true },
+  invalid_pmid: { icon: "ban", text: "논문 번호 검증 실패 → 폐기", warn: true },
+  forbidden_claim: { icon: "ban", text: "확정 진단·처방 표현 차단", warn: true },
+  safety_assurance: { icon: "ban", text: "'안전' 단정 표현 차단", warn: true },
+  tool_denied: { icon: "lock", text: "권한 없는 도구 호출 차단", warn: true },
+  emergency_short_circuit: { icon: "alert", text: "응급 즉시 안내 (LLM 호출 없음)", warn: true },
+  emergency_keyword_staff: { icon: "alert", text: "응급 키워드 감지 (의료진 대화)" },
   max_steps_or_empty: { text: "처리 단계 초과", warn: true },
 };
 
@@ -106,7 +107,7 @@ export function Chat({ session, patients, selectedPatient, onSelectPatient, pref
   }
 
   return (
-    <Window title={<>💬 상담 · {isStaff ? "업무 보조" : "AI 안내"}</>} bodyClass="chat">
+    <Window title={<><Icon name="chat" /> 상담 · {isStaff ? "업무 보조" : "AI 안내"}</>} bodyClass="chat">
       <div className="chat-head">
         {isStaff && (
           <label className="row muted">
@@ -122,7 +123,7 @@ export function Chat({ session, patients, selectedPatient, onSelectPatient, pref
           </label>
         )}
         <span className="spacer" />
-        <span className="safety-bar">🛡️ 응급 감지 · 출처 검증 · 권한 검사가 항상 켜져 있습니다</span>
+        <span className="safety-bar"><Icon name="shield" /> 응급 감지 · 출처 검증 · 권한 검사가 항상 켜져 있습니다</span>
       </div>
 
       <div className="thread" role="log" aria-live="polite" aria-label="대화">
@@ -132,6 +133,7 @@ export function Chat({ session, patients, selectedPatient, onSelectPatient, pref
           return (
             <div className={cls} key={m.id}>
               <div className="bubble">
+                {emergency && <div className="em-head"><Icon name="alert" /> 응급 안내</div>}
                 {m.role === "user" ? <p>{m.text}</p> : <RichText text={m.text} onSource={(id) => jumpToSource(m.id, id)} />}
               </div>
               {!!m.meta?.sources.length && (
@@ -151,12 +153,12 @@ export function Chat({ session, patients, selectedPatient, onSelectPatient, pref
                   <div className="row">
                     {m.meta.tool_calls.map((t, i) => (
                       <span key={`t${i}`} className={`chip ${t.ok ? "ok" : "warn"}`} title={t.error ?? undefined}>
-                        {t.ok ? "🔧" : "⚠️"} {TOOL_LABEL[t.name] ?? t.name}
+                        <Icon name={t.ok ? "wrench" : "alert"} /> {TOOL_LABEL[t.name] ?? t.name}
                       </span>
                     ))}
                     {m.meta.events.map((e, i) => (
                       <span key={`e${i}`} className={`chip ${EVENT_LABEL[e]?.warn ? "warn" : ""}`}>
-                        {EVENT_LABEL[e]?.text ?? e}
+                        {EVENT_LABEL[e]?.icon && <Icon name={EVENT_LABEL[e]!.icon!} />} {EVENT_LABEL[e]?.text ?? e}
                       </span>
                     ))}
                     {m.meta.usage.prompt_tokens ? <span className="chip">{m.meta.model} · {(m.meta.usage.prompt_tokens ?? 0) + (m.meta.usage.completion_tokens ?? 0)} tok</span> : null}

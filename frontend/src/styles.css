@@ -81,9 +81,6 @@ p { margin: 0 0 0.6em; }
 @media (prefers-color-scheme: dark) { .win-bar { color: #10190f; } }
 .win-title { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .win-actions { display: inline-flex; align-items: center; gap: 8px; }
-.win-x {
-  border: 0; background: transparent; color: inherit; font-size: 22px; line-height: 1; padding: 0 4px; opacity: 0.85;
-}
 .win-body { padding: 16px; min-height: 0; flex: 1 1 auto; }   /* auto: 자식이 지정한 height를 존중 (0%면 무시된다) */
 
 /* ---------- 앱 셸 ---------- */
@@ -293,8 +290,6 @@ main:focus { outline: none; }
 .account .tape { top: -12px; }
 .account .pin { top: -10px; left: 14px; }
 
-.win-x { user-select: none; }
-span.win-x { display: inline-block; }
 .btn { white-space: nowrap; flex: none; }
 .composer .row .field { flex: 1; }
 .layout { align-content: start; }
@@ -320,3 +315,23 @@ fieldset.lbl legend { padding: 0; margin-bottom: 4px; font-size: 13px; color: va
 .link:hover { color: var(--ink); }
 code { background: var(--gl); border: 1.5px solid var(--g); border-radius: 6px; padding: 0 5px; font-size: 13px; }
 .login { width: 100%; }
+
+/* ---------- 아이콘 / 맥 스타일 신호등 ---------- */
+.icon { width: 1.15em; height: 1.15em; vertical-align: -0.22em; flex: none; }
+.lights { display: inline-flex; align-items: center; gap: 7px; flex: none; margin-right: 4px; }
+.light { display: block; width: 13px; height: 13px; border-radius: 50%; border: 2px solid var(--gd); box-sizing: border-box; }
+.light.r { background: #ff5f57; }
+.light.y { background: #febc2e; }
+.light.g { background: #28c840; }
+.browser .lights { margin-right: 2px; }
+.tab-label { display: inline-flex; align-items: center; gap: 8px; }
+.role-badge {
+  display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; border: 2px solid var(--gd);
+  background: var(--gl); color: var(--gd); margin-bottom: 4px;
+}
+.role-badge .icon { width: 22px; height: 22px; }
+.em-head { display: flex; align-items: center; gap: 6px; font-family: var(--font-title); font-size: 16px; margin-bottom: 6px; }
+.chip .icon, .safety-bar .icon { width: 1.05em; height: 1.05em; }
+h3 .icon { color: var(--gd); }
+.win-bar { justify-content: flex-start; }
+.win-actions { margin-left: auto; }

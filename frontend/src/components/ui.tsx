@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { IconName } from "./Icon";
 
 /** 레퍼런스(세이지 그린 스티커/문구 스타일)의 소품들: 창, 핀, 테이프, 반짝이, 하트 */
 
@@ -36,26 +37,28 @@ interface WindowProps {
   children: ReactNode;
   className?: string;
   actions?: ReactNode;
-  onClose?: () => void;
   bodyClass?: string;
 }
 
-/** 레트로 데스크탑 창: 그린 타이틀바 + X 버튼 */
-export function Window({ title, children, className = "", actions, onClose, bodyClass = "" }: WindowProps) {
+/** 맥 브라우저 스타일 신호등(빨강·주황·초록). 장식이므로 스크린리더에서 숨긴다. */
+export function TrafficLights() {
+  return (
+    <span className="lights" aria-hidden="true">
+      <i className="light r" />
+      <i className="light y" />
+      <i className="light g" />
+    </span>
+  );
+}
+
+/** 레트로 데스크탑 창: 신호등 + 그린 타이틀바 */
+export function Window({ title, children, className = "", actions, bodyClass = "" }: WindowProps) {
   return (
     <section className={`win ${className}`}>
       <header className="win-bar">
+        <TrafficLights />
         <span className="win-title">{title}</span>
-        <span className="win-actions">
-          {actions}
-          {onClose ? (
-            <button type="button" className="win-x" onClick={onClose} aria-label="닫기">
-              ×
-            </button>
-          ) : (
-            <span className="win-x" aria-hidden="true">×</span>
-          )}
-        </span>
+        <span className="win-actions">{actions}</span>
       </header>
       <div className={`win-body ${bodyClass}`}>{children}</div>
     </section>
@@ -101,7 +104,7 @@ export function ErrorNote({ children }: { children: ReactNode }) {
 }
 
 export const ROLE_LABEL: Record<string, string> = { patient: "환자", doctor: "의사", nurse: "간호사", admin: "원무" };
-export const ROLE_ICON: Record<string, string> = { patient: "🌱", doctor: "🩺", nurse: "💚", admin: "🗂️" };
+export const ROLE_ICON: Record<string, IconName> = { patient: "sprout", doctor: "stethoscope", nurse: "heart", admin: "folder" };
 
 export function fmtSlot(slot: string): string {
   const [d, t] = slot.split(" ");

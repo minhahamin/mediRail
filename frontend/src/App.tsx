@@ -6,17 +6,18 @@ import { Chat } from "./components/Chat";
 import { Login, Signup } from "./components/Auth";
 import { Patients } from "./components/Patients";
 import { Soap } from "./components/Soap";
-import { ROLE_ICON, ROLE_LABEL, Sparkle } from "./components/ui";
+import { Icon, type IconName } from "./components/Icon";
+import { ROLE_ICON, ROLE_LABEL, Sparkle, TrafficLights } from "./components/ui";
 import { navigate, useAuthRoute } from "./router";
 import type { PatientLite, Role, Session } from "./types";
 
 type TabId = "chat" | "appointments" | "patients" | "soap" | "audit";
 
-const TABS: Record<Role, { id: TabId; label: string }[]> = {
-  patient: [{ id: "chat", label: "💬 상담" }, { id: "appointments", label: "📅 내 예약" }],
-  nurse: [{ id: "chat", label: "💬 상담" }, { id: "patients", label: "🗒️ 환자" }, { id: "appointments", label: "📅 예약 현황" }],
-  doctor: [{ id: "chat", label: "💬 상담" }, { id: "patients", label: "🗒️ 환자" }, { id: "soap", label: "📓 SOAP" }, { id: "appointments", label: "📅 예약 현황" }],
-  admin: [{ id: "chat", label: "💬 상담" }, { id: "appointments", label: "📅 예약 관리" }, { id: "patients", label: "🗒️ 환자(인적사항)" }, { id: "audit", label: "🔍 감사 로그" }],
+const TABS: Record<Role, { id: TabId; label: string; icon: IconName }[]> = {
+  patient: [{ id: "chat", label: "상담", icon: "chat" }, { id: "appointments", label: "내 예약", icon: "calendar" }],
+  nurse: [{ id: "chat", label: "상담", icon: "chat" }, { id: "patients", label: "환자", icon: "patients" }, { id: "appointments", label: "예약 현황", icon: "calendar" }],
+  doctor: [{ id: "chat", label: "상담", icon: "chat" }, { id: "patients", label: "환자", icon: "patients" }, { id: "soap", label: "SOAP", icon: "soap" }, { id: "appointments", label: "예약 현황", icon: "calendar" }],
+  admin: [{ id: "chat", label: "상담", icon: "chat" }, { id: "appointments", label: "예약 관리", icon: "calendar" }, { id: "patients", label: "환자(인적사항)", icon: "patients" }, { id: "audit", label: "감사 로그", icon: "audit" }],
 };
 
 const STORE = "medirail.session";
@@ -106,10 +107,11 @@ export default function App() {
     <div className="shell">
       <a className="skip" href="#main">본문으로 건너뛰기</a>
       <header className="browser">
+        <TrafficLights />
         <span className="brand"><Sparkle /><span>Medi<b>Rail</b></span></span>
         <span className="addr">medirail · 근거 기반 의료 AI 에이전트 (데모 · 합성 데이터)</span>
         <span className="who">
-          <span className="chip">{ROLE_ICON[session.role]} {ROLE_LABEL[session.role]}</span>
+          <span className="chip"><Icon name={ROLE_ICON[session.role]} /> {ROLE_LABEL[session.role]}</span>
           <span>{session.name}</span>
           <button className="logout" type="button" onClick={logout}>로그아웃</button>
         </span>
@@ -121,7 +123,7 @@ export default function App() {
             {tabs.map((t) => (
               <li key={t.id}>
                 <button type="button" aria-current={tab === t.id ? "page" : undefined} onClick={() => setTab(t.id)}>
-                  {t.label}
+                  <span className="tab-label"><Icon name={t.icon} />{t.label}</span>
                 </button>
               </li>
             ))}

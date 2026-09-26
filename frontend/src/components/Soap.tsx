@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError } from "../api";
 import type { SoapNote } from "../types";
+import { Icon } from "./Icon";
 import { Empty, ErrorNote, Notebook, Spinner, Window } from "./ui";
 
 type Filter = "all" | "draft" | "approved";
@@ -41,7 +42,7 @@ export function Soap({ onAsk }: { onAsk: (prompt: string) => void }) {
 
   return (
     <Window
-      title={<>📓 SOAP 노트 {drafts > 0 && <span className="chip draft">초안 {drafts}</span>}</>}
+      title={<><Icon name="soap" /> SOAP 노트 {drafts > 0 && <span className="chip draft">초안 {drafts}</span>}</>}
       actions={
         <button className="btn sm ghost" type="button" onClick={() => onAsk("이 환자 SOAP 초안 만들어서 저장해줘")}>
           + 초안 만들기 (상담)
@@ -49,7 +50,7 @@ export function Soap({ onAsk }: { onAsk: (prompt: string) => void }) {
       }
     >
       <div className="note" style={{ marginBottom: 12 }}>
-        🔐 AI는 <b>초안만</b> 만들 수 있습니다. 승인 도구는 AI에게 존재하지 않고, <b>의사가 이 화면에서만</b> 승인할 수 있습니다 (human-in-the-loop).
+        <Icon name="lock" /> AI는 <b>초안만</b> 만들 수 있습니다. 승인 도구는 AI에게 존재하지 않고, <b>의사가 이 화면에서만</b> 승인할 수 있습니다 (human-in-the-loop).
       </div>
       <div className="row" style={{ marginBottom: 12 }} role="group" aria-label="상태 필터">
         {(["all", "draft", "approved"] as Filter[]).map((f) => (
@@ -71,7 +72,7 @@ export function Soap({ onAsk }: { onAsk: (prompt: string) => void }) {
                 <h3>{n.patient_name}</h3>
                 <span className="muted">{n.visit_date} · {n.chief_complaint}</span>
                 <span className="spacer" />
-                <span className={`chip ${n.status === "draft" ? "draft" : "ok"}`}>{n.status === "draft" ? "초안 (미승인)" : "✔ 승인됨"}</span>
+                <span className={`chip ${n.status === "draft" ? "draft" : "ok"}`}>{n.status === "draft" ? "초안 (미승인)" : <><Icon name="check" /> 승인됨</>}</span>
               </div>
               <div className="soap-grid">
                 <div><h4>S · 주관적</h4>{n.subjective}</div>

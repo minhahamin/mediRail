@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../api";
 import type { Encounter, Intake, PatientLite, PatientProfile, Session } from "../types";
+import { Icon } from "./Icon";
 import { Empty, ErrorNote, Notebook, Spinner, Window } from "./ui";
 
 interface Detail {
@@ -42,7 +43,7 @@ export function Patients({ session, patients, selected, onSelect, onAsk }: {
 
   return (
     <div className="split">
-      <Window title="🗒️ 환자 목록">
+      <Window title={<><Icon name="patients" /> 환자 목록</>}>
         <ul className="plist">
           {patients.map((p) => (
             <li key={p.id}>
@@ -64,7 +65,7 @@ export function Patients({ session, patients, selected, onSelect, onAsk }: {
           <Spinner />
         ) : (
           <>
-            <Window title={<>🪪 {detail.profile.name} · 기본 정보</>}>
+            <Window title={<><Icon name="idcard" /> {detail.profile.name} · 기본 정보</>}>
               <dl className="kv">
                 <dt>번호</dt><dd>#{detail.profile.id}</dd>
                 <dt>출생연도</dt><dd>{detail.profile.birth_year}년 ({detail.profile.sex === "F" ? "여" : "남"})</dd>
@@ -75,7 +76,7 @@ export function Patients({ session, patients, selected, onSelect, onAsk }: {
                   </>
                 ) : (
                   <>
-                    <dt>임상 정보</dt><dd><span className="chip warn">🔒 이 역할은 접근할 수 없습니다</span></dd>
+                    <dt>임상 정보</dt><dd><span className="chip warn"><Icon name="lock" /> 이 역할은 접근할 수 없습니다</span></dd>
                   </>
                 )}
               </dl>
@@ -91,7 +92,7 @@ export function Patients({ session, patients, selected, onSelect, onAsk }: {
 
             {clinical && (
               <Notebook pin>
-                <h3>📝 문진 원문</h3>
+                <h3><Icon name="note" /> 문진 원문</h3>
                 {detail.intake ? (
                   <>
                     <p>{detail.intake.text}</p>
@@ -105,7 +106,7 @@ export function Patients({ session, patients, selected, onSelect, onAsk }: {
 
             {detail.encounters && (
               <Notebook tape>
-                <h3>🩺 진료 기록</h3>
+                <h3><Icon name="stethoscope" /> 진료 기록</h3>
                 {detail.encounters.length === 0 ? (
                   <p className="muted">진료 기록이 없습니다.</p>
                 ) : (
