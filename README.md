@@ -15,8 +15,10 @@
 | ![로그인](docs/screenshots/login.png) | ![데모 계정](docs/screenshots/demo.png) |
 | **회원가입 (환자 전용)** | **환자: 응급 문장은 LLM 없이 즉시 119 안내** |
 | ![회원가입](docs/screenshots/signup.png) | ![환자 응급 안내](docs/screenshots/patient-emergency.png) |
-| **의사: PubMed 문헌 검색 (MCP)** | |
-| ![의사 문헌 검색](docs/screenshots/doctor-literature.png) | |
+| **의사: PubMed 문헌 검색 (MCP)** | **시스템 관리자: 사용자·권한 관리** |
+| ![의사 문헌 검색](docs/screenshots/doctor-literature.png) | ![관리자 사용자·권한](docs/screenshots/admin-users.png) |
+| **시스템 관리자: 사유를 남기는 임상 열람 (break-glass)** | **읽기 전용 관리자 (공개 데모): 가입자 정보 마스킹, 변경 불가** |
+| ![break-glass](docs/screenshots/admin-breakglass.png) | ![읽기 전용 관리자](docs/screenshots/admin-readonly.png) |
 
 ---
 
@@ -131,6 +133,7 @@ flowchart TB
 | 도구 | `tools.py` | 서비스·MCP를 감싼 얇은 어댑터 + 출처 제목 | |
 | MCP 브리지 | `mcp_bridge.py` | 외부 지식 서버 호출, 장애 격리·재기동 | |
 | MCP 서버 | `mcp_servers/*` | PubMed, 식약처 DUR (독립 실행 가능, 어떤 MCP 클라이언트에서도 사용) | |
+| 시스템 관리자 | `admin.py` | 사용자·권한 관리, 현황, 사유를 남기는 임상 열람(break-glass), 시스템 계정 부트스트랩 | ✗ |
 | 요청 제한 | `ratelimit.py` | 사용자별·IP별·일일 전체 상한 (공개 데모의 LLM 비용 남용 방지). 응급 안내는 제한하지 않음 | |
 | 스킬 | `skills.py`, `skills/*/SKILL.md` | 역할별 절차 지식(SOAP·문진·약물·문헌·응급)을 표준 SKILL.md로 관리하고 시스템 프롬프트에 주입 | |
 | DB | `db.py` | SQLite(개발)·PostgreSQL(배포) 겸용 어댑터. 서비스 코드는 두 DB를 구분하지 않음 | |
@@ -236,6 +239,23 @@ flowchart LR
 - **문헌은 의료진만, 약물 안전 정보는 환자에게도**: 논문 초록은 비전문가가 오해하기 쉬워 의료진에게만 열고, 식약처가 공식 고시한 DUR 정보는 환자도 조회할 수 있게 하되 "복용 변경은 의사·약사와"를 강제합니다.
 - **회원가입은 환자 계정만**: 의사·간호사·원무는 스스로 만들 수 없습니다. 요청 본문에 `role`을 넣어도 무시되며(권한 상승 방지), 새 환자는 본인 데이터만 볼 수 있습니다. `doctor*`·`admin*` 같은 직원 사칭 아이디는 차단하고, IP당 가입 횟수와 전체 계정 수를 제한합니다.
 - 단일 출처: 모든 규칙이 [`backend/app/rbac.py`](backend/app/rbac.py) 한 파일에 있고, 라우트·도구·서비스가 이를 공유합니다.
+
+### 시스템 관리자 (최상위 관리자)
+
+사용자·권한을 다루는 **별도 역할(`superadmin`)** 과 관리자 콘솔(사용자·권한 / 시스템 현황 / 임상 열람 / 감사 로그)을 두었습니다. 다만 "모든 것을 상시로 볼 수 있는 관리자"는 이 프로젝트의 최소 권한 원칙과 충돌하므로 **관리자에게도 임상 데이터를 기본적으로 열어 두지 않았습니다.**
+
+| 원칙 | 구현 |
+|---|---|
+| 임상 데이터는 사유를 남겨야만 열람 (break-glass) | 열람 사유 10~300자 필수. **누가·언제·어떤 환자를·왜** 열람했는지 감사 로그에 기록. 화면과 통계에 열람 횟수 표시 |
+| 관리자도 AI 대화·임상 기능 없음 | `chat`, 진료·문진·SOAP 권한이 없고 SOAP 승인은 여전히 의사만 |
+| 권한 부여의 안전장치 | 자기 자신·다른 최상위 관리자·데모 계정은 변경 불가, **`superadmin`은 API로 부여 불가**, 환자 기록이 없는 계정은 환자로 변경 불가, 변경은 2단계 확인 |
+| 변경은 즉시 반영·회수 | 토큰의 role이 아니라 **DB의 role을 매 요청마다 확인** (같은 토큰으로 승격·회수가 바로 적용됨을 테스트) |
+| 계정 중지 | 로그인 차단 + **이미 발급된 토큰도 즉시 무효화**. 비밀번호가 맞은 경우에만 "중지됨"을 알려 계정 존재 여부를 노출하지 않음 |
+| 실제 관리자는 비공개 | 환경변수(`MEDIRAIL_SUPERADMIN_USERNAME/PASSWORD`, 12자 이상)로만 생성하고 환경변수를 바꾸면 비밀번호가 회전됨. 저장소·화면·이미지에 없음 |
+| 공개 데모용 읽기 전용 관리자 | `superadmin_demo`: 어떤 변경도 불가, 가입자의 아이디·이름은 마스킹(`m****`), break-glass는 시드(합성) 환자 1~8번만 |
+| 사칭 방지 | `superadmin*`·`sysadmin*`·`sudo*`·`root*` 등은 가입 아이디로 쓸 수 없음 |
+
+**이미 배포된 DB의 무중단 마이그레이션**: 컬럼(`read_only`, `disabled`)을 추가하고 `role` CHECK 제약에 `superadmin`을 허용하도록 시작 시 자동으로 올립니다(멱등). PostgreSQL은 제약을 교체하고, SQLite는 테이블을 다시 만들며 데이터와 외래 키를 보존하며, 두 경로 모두 테스트합니다.
 
 ---
 
@@ -437,7 +457,7 @@ erDiagram
 | 외부 지식 | **MCP 서버** (Python MCP SDK 2.x): PubMed(NCBI E-utilities), 식약처 DUR(공공데이터포털) |
 | 프론트엔드 | React 19 · TypeScript · Vite · 세이지 그린 스티커 스타일 ([디자인 가이드](docs/design.md)) · 외부 UI 라이브러리 없음 |
 | 배포 | **Railway** (웹: nginx / API: uvicorn + MCP 서브프로세스 / PostgreSQL) · Docker |
-| 테스트/평가 | pytest (284개, SQLite·PostgreSQL 양쪽 통과) · 자체 평가 하네스 (45문항) |
+| 테스트/평가 | pytest (326개, SQLite·PostgreSQL 양쪽 통과) · 자체 평가 하네스 (45문항) |
 
 ---
 
@@ -452,6 +472,7 @@ MediRail/
 │   │   ├── agent.py        # 에이전트 루프: 응급 차단 → 도구 호출 → 출력 검증/자가 교정 → 감사
 │   │   ├── tools.py        # 역할별 도구 레지스트리 (13종)
 │   │   ├── services.py     # 도메인 로직 + 권한 검사의 단일 지점 (회원가입 포함)
+│   │   ├── admin.py        # 시스템 관리자: 권한 부여, 현황, break-glass, 시스템 계정 부트스트랩
 │   │   ├── guardrails.py   # 응급 감지 / 출력 검증
 │   │   ├── ratelimit.py    # 사용자·IP·일일 요청 제한
 │   │   ├── skills.py       # SKILL.md 로더 (역할별 프롬프트 주입)
@@ -463,9 +484,9 @@ MediRail/
 │   │   ├── clinic.py       # 진료시간·슬롯·취소 마감 규칙
 │   │   ├── db.py, seed.py  # SQLite/PostgreSQL 어댑터, 스키마, 합성 데이터
 │   │   └── config.py
-│   └── tests/              # 284 tests
+│   └── tests/              # 326 tests
 ├── frontend/               # React + Vite (Dockerfile, nginx.conf.template)
-│   └── src/                # App, router, api, components/{Auth,Chat,Appointments,Patients,Soap,Audit,ui}
+│   └── src/                # App, router, api, components/{Auth,Chat,Appointments,Patients,Soap,Audit,Admin,ui}
 ├── mcp_servers/
 │   ├── pubmed/             # client.py(E-utilities) + server.py(MCP)
 │   └── mfds_dur/           # client.py(DUR 성분정보 OpenAPI) + server.py(MCP)
@@ -485,6 +506,7 @@ cp .env.example .env
 #   OPENROUTER_API_KEY=...      (필수)
 #   DATA_GO_KR_API_KEY=...      (약물 조회용. 공공데이터포털에서 'DUR 성분정보'·'DUR 품목정보' 활용 신청 — 키는 계정당 하나)
 #   NCBI_API_KEY=...            (선택, PubMed 속도 제한 완화)
+#   MEDIRAIL_SUPERADMIN_USERNAME / MEDIRAIL_SUPERADMIN_PASSWORD   (선택: 실제 최상위 관리자 생성, 비밀번호 12자 이상)
 
 # 2) 백엔드 (개발 모드는 SQLite)
 cd backend
@@ -553,7 +575,8 @@ railway add --service medirail-api && railway add --service medirail-web
 railway domain --service medirail-api && railway domain --service medirail-web
 railway variable set RAILWAY_DOCKERFILE_PATH=backend/Dockerfile --service medirail-api   # 저장소 루트 컨텍스트
 # (서비스 변수 설정: OPENROUTER_API_KEY, DATA_GO_KR_API_KEY, MEDIRAIL_JWT_SECRET, MEDIRAIL_ENV=production,
-#  MEDIRAIL_CORS_ORIGINS=<웹 도메인>, DATABASE_URL=${{Postgres.DATABASE_URL}} / 웹: VITE_API_URL=<API 도메인>)
+#  MEDIRAIL_CORS_ORIGINS=<웹 도메인>, DATABASE_URL=${{Postgres.DATABASE_URL}},
+#  MEDIRAIL_SUPERADMIN_USERNAME, MEDIRAIL_SUPERADMIN_PASSWORD / 웹: VITE_API_URL=<API 도메인>)
 railway up --service medirail-api --ci
 railway up frontend --path-as-root --service medirail-web --ci
 ```
@@ -565,14 +588,15 @@ railway up frontend --path-as-root --service medirail-web --ci
 ## 테스트
 ```bash
 cd backend
-python -m pytest -q                                # 284 passed (SQLite)
-MEDIRAIL_TEST_DB=postgres python -m pytest -q      # 284 passed (임베디드 PostgreSQL, pgserver)
+python -m pytest -q                                # 325 passed, 1 skipped (SQLite)
+MEDIRAIL_TEST_DB=postgres python -m pytest -q      # 325 passed, 1 skipped (임베디드 PostgreSQL, pgserver)
 ```
 
-**같은 테스트 전체를 SQLite와 PostgreSQL 양쪽에서** 돌립니다. 배포 DB가 다른데 개발 DB로만 검증하는 위험을 없애기 위해, DB 어댑터(`?`→`%s`, `RETURNING id`, 시퀀스 동기화)를 두고 로컬에서 실제 PostgreSQL 경로를 검증한 뒤 배포했습니다.
+**같은 테스트 전체를 SQLite와 PostgreSQL 양쪽에서** 돌립니다(총 326개 중 DB별 마이그레이션 테스트 1개는 해당 DB에서만 실행되어 각각 325개 통과, 1개 건너뜀). 배포 DB가 다른데 개발 DB로만 검증하는 위험을 없애기 위해, DB 어댑터(`?`→`%s`, `RETURNING id`, 시퀀스 동기화)를 두고 로컬에서 실제 PostgreSQL 경로를 검증한 뒤 배포했습니다.
 
 | 파일 | 테스트 | 검증 내용 |
 |---|---:|---|
+| `test_admin.py` | 39 | **시스템 관리자**: 부트스트랩·비밀번호 회전, 권한 부여 안전장치(자기·최상위·데모 보호, superadmin 부여 불가), 즉시 반영·감사, 계정 중지(토큰 무효화), 읽기 전용 마스킹·제한, break-glass 사유·감사, 채팅·임상 직접 접근 차단, **기존 DB 마이그레이션(SQLite·PostgreSQL)** |
 | `test_dur_client.py` | 37 | 식약처 API 특성 재현 모의 서버: 삭제 고시 제외, 양방향 검색, 500행 초과 무응답, 불완전 페이지, 3종 오류 형식, 키 미노출, 캐시(TTL·영속), 유사 표기(`needs_confirmation`)와 다른 약 구분, 상품명→성분 변환 |
 | `test_demo_accounts.py` | 3 | 데모 계정 목록을 **DB에서 조회**함을 증명 (DB 값을 바꾸면 응답이 바뀌고, 삭제하면 사라짐. 비밀번호·해시 미노출) |
 | `test_register.py` | 30 | 회원가입: 환자 전용·권한 상승 불가(`role` 주입 무시), 검증 16종, 사칭 아이디 차단, 중복 409, IP 제한, 계정 수 상한, 원자성, 감사 로그 |
@@ -600,6 +624,7 @@ LLM 없이도 안전 속성을 검증할 수 있도록 에이전트에 LLM을 �
 - [x] **Agent Skills(SKILL.md)**: `soap-note`, `intake-summary`, `medical-literature-qa`, `drug-interaction-check`, `emergency-triage`
 - [x] **React 프론트**: 로그인·회원가입 분리, 역할별 화면, 출처 카드, 안전장치 기록
 - [x] **PostgreSQL 이식**과 **Railway 배포** (웹 + API + DB)
+- [x] **시스템 관리자 콘솔**: 권한 부여, 계정 중지, 현황, break-glass, 읽기 전용 데모 관리자
 - [ ] **평가 확장**: 도구를 붙인 에이전트 경로로 어려운 문항 추가(DUR·PubMed 근거 기반), MedQA/KorMedMCQA 반영, 재측정
 - [ ] **수치 근거 검증**: 답변의 수치가 초록에 실제로 있는지 규칙 기반으로 확인
 - [ ] **프론트 자동화 테스트**(Playwright E2E), CI(GitHub Actions)에서 SQLite·PostgreSQL 매트릭스
@@ -621,6 +646,9 @@ REST와 에이전트 도구가 같은 함수를 호출하므로, LLM이 어떻�
 **왜 유사한 성분명을 자동으로 확정하지 않나? (놓침 vs 오인)**
 "클라리스로마이신"과 "클래리트로마이신"은 같은 약의 표기 차이입니다. 힌트만 돌려주던 초기 방식에서는 LLM이 목록을 잘못 해석해 **금기를 금기가 아니라고 안내**하는 사고가 실제로 났습니다. 그래서 유사도 자동 매칭을 넣었는데, **실제 데이터(468개 성분명)로 임계값을 검증하니** 표기 변형은 0.89인 반면 서로 다른 약도 그 이상(로바스타틴↔로수바스타틴 0.92, 에리트로마이신↔텔리트로마이신 0.90)이었습니다. 유사도만으로는 "같은 약의 다른 표기"와 "다른 약"을 구분할 수 없어서 자동 확정을 버렸습니다. 대신 별도 상태 `needs_confirmation`으로 **후보와 그 결과를 함께** 돌려주고, LLM이 같은 약인지 판단해 정확한 이름으로 다시 조회해 확정하게 합니다 (놓치지도, 단정하지도 않는 방식).
 
+**왜 최상위 관리자도 임상 데이터를 상시로 볼 수 없게 했나?**
+"관리자는 다 볼 수 있어야 한다"가 가장 쉬운 설계지만, 관리자 계정이 탈취되거나 오남용되면 모든 환자 기록이 한 번에 노출됩니다. 실제 의료 시스템은 관리자에게 사용자·시스템 권한만 주고 진료 정보는 사유를 남기는 긴급 열람(break-glass)으로 엽니다. 이 프로젝트도 같은 방식으로, 열람은 가능하되 **사유가 없으면 열리지 않고, 열람 사실이 감사 로그에 남으며, 통계에 횟수가 표시**됩니다. 공개 사이트에서는 실제 관리자를 비공개로 두고 읽기 전용 관리자만 공개해 방문자가 스스로 의사로 승격하는 사고를 원천 차단했습니다.
+
 **왜 가입은 환자 계정만 허용하나?**
 공개 데모에서 의사·간호사·원무를 자가 가입으로 만들 수 있으면 RBAC 자체가 무의미해집니다. 그래서 가입 API에는 `role` 필드가 아예 없고(넣어도 무시), 직원 사칭 아이디를 막고, 계정 수와 가입 속도를 제한합니다. 의료진·원무 화면은 데모 계정으로만 체험합니다.
 
@@ -628,7 +656,7 @@ REST와 에이전트 도구가 같은 함수를 호출하므로, LLM이 어떻�
 MCP 서버를 독립 서비스로 배포하면 구조는 더 깔끔하지만 서비스가 5개(웹, API, MCP×2, DB)로 늘어 월 비용이 커집니다. 예산 제약이 있는 포트폴리오라 stdio 서브프로세스로 같은 이미지에 넣었습니다. MCP 서버 자체는 독립 프로세스라 그대로 분리할 수 있고(로드맵), Claude Code 등 다른 MCP 클라이언트에서도 쓸 수 있습니다.
 
 **왜 DB 어댑터를 만들었나?**
-개발은 SQLite, 배포는 PostgreSQL입니다. ORM으로 갈아타는 대신 `sqlite3` 스타일 인터페이스를 흉내 내는 얇은 어댑터로 서비스 코드를 그대로 두고, **같은 284개 테스트를 두 DB에서 모두 통과**시켜 이식을 검증했습니다.
+개발은 SQLite, 배포는 PostgreSQL입니다. ORM으로 갈아타는 대신 `sqlite3` 스타일 인터페이스를 흉내 내는 얇은 어댑터로 서비스 코드를 그대로 두고, **같은 326개 테스트를 두 DB에서 모두 통과**시켜 이식을 검증했습니다.
 
 **왜 검증 실패 시 폐기가 아니라 자가 교정인가?**
 가드레일이 답변을 폐기하면 안전하지만 쓸모없습니다. 위반 사유를 알려 한 번 다시 쓰게 하면 모델이 도구를 호출해 올바른 답을 내는 경우가 많았습니다. 다만 무한 재시도는 비용과 지연을 키우므로 1회로 제한하고, 그래도 위반하면 폐기합니다.
@@ -641,7 +669,7 @@ LLM 판사는 비용이 들고 판사 자체의 편향이 섞입니다. 이 프�
 - 모델이 도구 결과 밖의 일반 의학 지식을 덧붙일 수 있고, 논문 **수치**의 정확성은 검증하지 못함 (PMID 존재 여부만 검증)
 - 문항·참고문서는 자체 제작이며, 도구를 붙인 에이전트 경로에 대한 정량 평가는 아직 없음
 - 응급 감지의 부정 표현 미처리, 공휴일 미반영
-- 요청 제한이 메모리 기반이라 API 인스턴스 1대만 지원. 인증은 데모 수준(비밀번호 재설정·이메일 인증·토큰 폐기 없음)
+- 관리자 계정에 다중 인증(MFA)과 로그인 실패 잠금이 없음 (요청 제한만 있음). 요청 제한이 메모리 기반이라 API 인스턴스 1대만 지원. 인증은 데모 수준(비밀번호 재설정·이메일 인증·토큰 폐기 없음)
 - 프론트 자동화 테스트 없음. 첫 응답이 느릴 수 있음 (LLM + 외부 API, 약 3~15초)
 - 실제 개인정보·의료정보를 다루려면 개인정보보호법, 의료법, 의료기기(SaMD) 규제 검토가 필요
 
