@@ -8,6 +8,7 @@ Claude Code 등록 예:
     claude mcp add pubmed -- python -m mcp_servers.pubmed.server
 환경변수(선택): NCBI_API_KEY, NCBI_EMAIL
 """
+import logging
 import os
 
 from mcp.server import MCPServer
@@ -15,6 +16,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 
 from .client import PubMedClient, PubMedError
 
+logging.getLogger("httpx").setLevel(logging.WARNING)  # 요청 URL(API 키 포함 가능)이 로그에 남지 않도록
 mcp = MCPServer("medirail-pubmed")
 _client: PubMedClient | None = None
 
