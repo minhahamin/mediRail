@@ -42,6 +42,7 @@ def emergency_response(categories: list[str]) -> str:
 
 
 CITATION = re.compile(r"\[(D\d+)\]")
+PMID = re.compile(r"PMID\s*:?\s*(\d{5,9})", re.I)
 FORBIDDEN_CLAIM = re.compile(
     r"확진(입니다|됩니다|했습니다|이에요)|진단합니다|처방합니다|처방해 드리겠습니다|\d+\s?(mg|mL|정|알)(을|를|씩)?\s?(복용|투여|드시)하세요"
 )
@@ -57,12 +58,18 @@ class Checked:
     events: list[str] = field(default_factory=list)
 
 
-def check_output(answer: str, sources: list[dict]) -> Checked:
+def check_output(answer: str, sources: list[dict], user_text: str = "") -> Checked:
     """LLM 출력 사후 검증. 위반 시 안전한 문구로 대체하고 이벤트를 남긴다."""
     events: list[str] = []
     allowed = {s["id"] for s in sources}
     cited = set(CITATION.findall(answer))
-    if cited - allowed:
+    # 논문 번호는 도구가 실제로 돌려준 것(또는 사용자가 직접 말한 것)만 언급할 수 있다
+    known_pmids = {r.split(":", 1)[1] for s in sources for r in s.get("refs", []) if r.startswith("PMID:")}
+    known_pmids |= set(PMID.findall(user_text))
+    if PMID.findall(answer) and set(PMID.findall(answer)) - known_pmids:
+        events.append("invalid_pmid")
+        answer = CITATION_FAIL
+    elif cited - allowed:
         events.append("invalid_citation")
         answer = CITATION_FAIL
     elif FORBIDDEN_CLAIM.search(answer):

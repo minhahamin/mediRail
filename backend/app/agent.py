@@ -76,7 +76,7 @@ def run_agent(conn, user: User, message: str, *, history=None, patient_id: int |
             res = tools.execute(conn, user, fn["name"], fn.get("arguments"))
             if res.ok:
                 src_id = f"D{len(sources) + 1}"
-                sources.append({"id": src_id, "title": res.title})
+                sources.append({"id": src_id, "title": res.title, **({"refs": list(res.refs)} if res.refs else {})})
                 payload = {"source_id": src_id, "title": res.title, "data": res.data}
             else:
                 payload = {"error": res.error}
@@ -89,7 +89,7 @@ def run_agent(conn, user: User, message: str, *, history=None, patient_id: int |
     if not answer:
         events.append("max_steps_or_empty")
         answer = STEP_LIMIT_MSG
-    checked = guardrails.check_output(answer, sources)
+    checked = guardrails.check_output(answer, sources, user_text=message)
     events += checked.events
     services.audit(conn, user, "chat", f"tools={[c['name'] for c in calls]} events={events} len={len(message)}")  # 원문은 기록하지 않음
     return AgentResult(checked.text, sources, calls, events, emergency, usage, model)
