@@ -1,0 +1,3 @@
+-r requirements.txt
+pgserver>=0.1   # 테스트용 임베디드 PostgreSQL (MEDIRAIL_TEST_DB=postgres)
+pytest>=8.0

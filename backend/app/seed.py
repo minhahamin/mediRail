@@ -63,3 +63,5 @@ def seed(conn: sqlite3.Connection, today: date | None = None) -> None:
         conn.execute("INSERT INTO appointments (patient_id, doctor_id, slot, reason, created_at) VALUES (?,?,?,?,?)",
                      (pid, uid[doc], f"{nxt.isoformat()} {hh}", reason, now))
     conn.commit()
+    from .db import resync_sequences
+    resync_sequences(conn)   # PostgreSQL: id를 직접 넣었으니 시퀀스를 맞춘다
