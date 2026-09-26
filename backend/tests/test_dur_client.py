@@ -1,4 +1,8 @@
-"""식약처 DUR 클라이언트: 실제 API의 특성(품목 쌍 데이터, 500행 초과 시 조용히 0건, XML 오류)을 흉내 낸 가짜 서버로 검증."""
+"""식약처 DUR 성분정보 클라이언트: 실제 API의 특성을 흉내 낸 모의 서버로 검증.
+
+재현하는 특성: {"item": {...}} 래퍼, 삭제된 고시(DEL_YN), 한쪽 방향으로만 등재된 쌍, numOfRows>500이면 빈 응답,
+XML/JSON(HTTP 400) 오류 형식, 품목명 끝 괄호의 성분명.
+"""
 import httpx
 import pytest
 
@@ -9,72 +13,87 @@ KEY_ENCODED = "abc%2Bdef%2F123%3D%3D"
 KEY_DECODED = "abc+def/123=="
 
 
-def _row(seq, name, ingr, eng, partner, partner_eng, reason, date="20090303"):
-    return {"ITEM_SEQ": seq, "ITEM_NAME": name, "INGR_KOR_NAME": ingr, "INGR_ENG_NAME": eng, "MIX": "단일",
-            "MIXTURE_INGR_KOR_NAME": partner, "MIXTURE_INGR_ENG_NAME": partner_eng, "PROHBT_CONTENT": reason, "NOTIFICATION_DATE": date}
+def pair(a, a_eng, a_code, b, b_eng, b_code, reason, date="20090303", del_yn="정상"):
+    return {"TYPE_NAME": "병용금기", "INGR_CODE": a_code, "INGR_KOR_NAME": a, "INGR_ENG_NAME": a_eng,
+            "MIXTURE_INGR_CODE": b_code, "MIXTURE_INGR_KOR_NAME": b, "MIXTURE_INGR_ENG_NAME": b_eng,
+            "NOTIFICATION_DATE": date, "PROHBT_CONTENT": reason, "REMARK": None, "DEL_YN": del_yn}
 
 
 def build_pairs():
-    """품목 쌍 데이터: 제품이 여러 개라 같은 성분 쌍이 반복된다 (실제와 같은 형태)."""
-    rows = []
-    simva = ("1", "심바스타정20밀리그램(심바스타틴)", "심바스타틴", "Simvastatin")
-    for i in range(400):  # 상대 성분 3종 × 제품 400개 = 1200행 → 3페이지
-        rows.append(_row(*simva, "클래리트로마이신", "Clarithromycin", "근병증, 횡문근융해의 위험증가"))
-        rows.append(_row(*simva, "이트라코나졸", "Itraconazole", "횡문근융해증"))
-        rows.append(_row(*simva, "클래리스로마이신", "Clarithromycin", "근병증, 횡문근융해의 위험증가"))
-    itra = ("2", "코니트라캡슐(이트라코나졸)", "이트라코나졸", "Itraconazole")
-    rows += [_row(*itra, "심바스타틴", "Simvastatin", "횡문근융해증") for _ in range(30)]
-    silde = ("3", "부광실데나필정(실데나필)", "실데나필", "Sildenafil")
-    rows += [_row(*silde, "희석니트로글리세린", "Dilute Nitroglycerin", "저혈압"), _row(*silde, "니코란딜", "Nicorandil", "저혈압")]
-    aspirin = ("4", "이텍스아스피린장용정(아스피린)", "아스피린", "Aspirin")
-    rows += [_row(*aspirin, "메토트렉세이트", "Methotrexate", "독성 증가")]
+    rows = [
+        pair("클래리트로마이신", "Clarithromycin", "D0C", "심바스타틴", "Simvastatin", "D0S", "근병증, 횡문근융해의 위험증가"),   # 한쪽 방향으로만 등재
+        pair("클래리트로마이신", "Clarithromycin", "D0C", "심바스타틴", "Simvastatin", "D0S", "횡문근융해증 보고", "20231220"),
+        pair("이트라코나졸", "Itraconazole", "D0I", "심바스타틴", "Simvastatin", "D0S", "횡문근융해증"),
+        pair("니트로글리세린", "Nitroglycerin", "D0N", "실데나필", "Sildenafil", "D0D", "혈압강하작용 증가", "20080401"),
+        pair("니코란딜", "Nicorandil", "D0R", "실데나필", "Sildenafil", "D0D", "혈압강하작용 증가"),
+        pair("메나테트레논", "Menatetrenone", "D0M", "와파린", "Warfarin", "D0W", "와파린 효과 감소"),
+        pair("아스피린", "Aspirin", "D0A", "메토트렉세이트", "Methotrexate", "D0X", "독성 증가"),
+        pair("사이클로스포린", "Cyclosporine", "D0Y", "로수바스타틴", "Rosuvastatin", "D0U", "근병증 위험 증가"),   # 로바스타틴과 표기가 비슷한 '다른 약'
+        pair("사이클로스포린", "Cyclosporine", "D0Y", "심바스타틴", "Simvastatin", "D0S", "횡문근융해 위험성 증가"),
+        # 삭제된 고시: 결과에 절대 나오면 안 된다
+        pair("와파린", "Warfarin", "D0W", "아스피린", "Aspirin", "D0A", "(삭제된 항목) 출혈", del_yn="삭제"),
+    ]
+    for i in range(1300):   # 1300+행 → 3페이지 (페이징 검증)
+        rows.append(pair(f"가상성분{i}", f"Virtual{i}", f"V{i:04d}", f"가상상대{i}", f"Partner{i}", f"P{i:04d}", "가상 사유"))
     return rows
 
 
-CATEGORY_ROWS = {
-    "getPwnmTabooInfoList03": [{"ITEM_SEQ": "4", "ITEM_NAME": "이텍스아스피린장용정(아스피린)", "INGR_NAME": "아스피린", "INGR_ENG_NAME": "Aspirin",
-                                "MIX_TYPE": "단일", "PROHBT_CONTENT": "임신 3기 동맥관 조기 폐쇄 가능", "REMARK": "경구"}],
-    "getCpctyAtentInfoList03": [{"ITEM_SEQ": "9", "ITEM_NAME": "졸피뎀정(졸피뎀)", "INGR_NAME": "졸피뎀", "INGR_ENG_NAME": "Zolpidem",
-                                 "MIX_TYPE": "단일", "PROHBT_CONTENT": None, "REMARK": None}],
+def single(cat, name, eng, code, **extra):
+    return {"TYPE_NAME": cat, "INGR_CODE": code, "INGR_NAME": name, "INGR_ENG_NAME": eng, "PROHBT_CONTENT": None, "REMARK": None,
+            "DEL_YN": "정상", **extra}
+
+
+SINGLES = {
+    "getPwnmTabooInfoList02": [single("임부금기", "아스피린", "Aspirin", "D0A", PROHBT_CONTENT="임신 3기 동맥관 조기 폐쇄 가능", GRADE="1등급"),
+                              single("임부금기", "졸피뎀타르타르산염", "Zolpidem", "D0Z", PROHBT_CONTENT="신생아 금단 증상", GRADE="3등급"),
+                              single("임부금기", "삭제된약", "Deleted", "D0Q", PROHBT_CONTENT="삭제", DEL_YN="삭제")],
+    "getSpcifyAgrdeTabooInfoList02": [single("특정연령대금기", "졸피뎀타르타르산염", "Zolpidem", "D0Z", PROHBT_CONTENT="안전성 및 유효성 미확립", AGE_BASE="18세 이하")],
+    "getOdsnAtentInfoList02": [single("노인주의", "클로르디아제폭시드", "Chlordiazepoxide", "D0L", PROHBT_CONTENT="소량부터 신중투여")],
+    "getCpctyAtentInfoList02": [single("용량주의", "졸피뎀타르타르산염", "Zolpidem", "D0Z", MAX_QTY="10밀리그램")],
+    "getMdctnPdAtentInfoList02": [single("투여기간주의", "졸피뎀타르타르산염", "Zolpidem", "D0Z", MAX_DOSAGE_TERM="4주")],
 }
+PRODUCTS = [{"ITEM_SEQ": "1", "ITEM_NAME": "타이레놀정500밀리그람(아세트아미노펜)"},
+            {"ITEM_SEQ": "2", "ITEM_NAME": "리피토정20밀리그램(아토르바스타틴칼슘삼수화물)"},
+            {"ITEM_SEQ": "3", "ITEM_NAME": "심바스타정20밀리그램(심바스타틴)"}]
 
 
 class FakeDur:
-    def __init__(self, page_drop=False, error_xml=None):
-        self.pairs, self.calls, self.page_drop, self.error_xml = build_pairs(), [], page_drop, error_xml
+    def __init__(self, page_drop=False, error=None, pairs=None):
+        self.pairs, self.calls, self.page_drop, self.error = pairs or build_pairs(), [], page_drop, error
 
     def __call__(self, req: httpx.Request) -> httpx.Response:
         p, op = dict(req.url.params), req.url.path.rsplit("/", 1)[-1]
         self.calls.append((op, p))
-        if self.error_xml:
-            return httpx.Response(200, text=self.error_xml)
-        rows = self.pairs if op == "getUsjntTabooInfoList03" else CATEGORY_ROWS.get(op, [])
-        if "itemName" in p:
-            rows = [r for r in rows if p["itemName"] in r["ITEM_NAME"]]
-        if "itemSeq" in p:
-            rows = [r for r in rows if r["ITEM_SEQ"] == p["itemSeq"]]
+        if self.error:
+            return self.error
+        if op == "getDurPrdlstInfoList03":
+            rows = [r for r in PRODUCTS if p.get("itemName", "") in r["ITEM_NAME"]]
+        elif op == "getUsjntTabooInfoList02":
+            rows = self.pairs
+        else:
+            rows = SINGLES.get(op, [])
         n, page = int(p["numOfRows"]), int(p["pageNo"])
-        if n > 500:  # 실제 API의 특성: 오류 없이 0건
-            return httpx.Response(200, json={"header": {"resultCode": "00"}, "body": {"pageNo": page, "totalCount": 0, "numOfRows": n}})
+        if n > 500:   # 실제 API: 오류 없이 totalCount조차 없는 빈 본문
+            return httpx.Response(200, json={"header": {"resultCode": "00"}, "body": {"pageNo": page, "numOfRows": n}})
         chunk = rows[(page - 1) * n: page * n]
         if self.page_drop and page == 2:
             chunk = chunk[:10]
         body = {"pageNo": page, "totalCount": len(rows), "numOfRows": n}
         if chunk:
-            body["items"] = chunk
+            body["items"] = [{"item": r} for r in chunk]   # 실제 응답의 래퍼 형식
         return httpx.Response(200, json={"header": {"resultCode": "00", "resultMsg": "NORMAL SERVICE."}, "body": body})
 
 
-def make(api=None, key=KEY_ENCODED, cache_path=None):
+def make(api=None, key=KEY_ENCODED, cache_path=None, **kw):
     api = api or FakeDur()
-    return DurClient(key, http=httpx.Client(transport=httpx.MockTransport(api)), cache_path=cache_path), api
+    return DurClient(key, http=httpx.Client(transport=httpx.MockTransport(api)), cache_path=cache_path, **kw), api
 
 
 # ---------- 키/요청 ----------
 def test_encoded_key_is_decoded_once():
     c, api = make()
-    c.resolve("심바스타틴")
-    assert api.calls[0][1]["serviceKey"] == KEY_DECODED  # httpx가 다시 한 번만 인코딩하도록 디코딩해서 전달
+    c.check_interaction("심바스타틴", "클래리트로마이신")
+    assert api.calls[0][1]["serviceKey"] == KEY_DECODED
 
 
 def test_missing_key_is_reported():
@@ -88,83 +107,95 @@ def test_page_size_never_exceeds_limit():
     assert all(int(p["numOfRows"]) <= 500 for _, p in api.calls)
 
 
-# ---------- 해석 ----------
-def test_resolve_prefers_single_ingredient_item_and_reports_rows():
-    c, _ = make()
-    r = c.resolve("심바스타틴")
-    assert r["item_seq"] == "1" and r["ingredient"] == "심바스타틴" and r["rows"] == 1200
-    assert c.resolve("존재하지않는약") is None
+def test_uses_ingredient_service_operations():
+    c, api = make()
+    c.check_interaction("심바스타틴", "클래리트로마이신")
+    assert {op for op, _ in api.calls} == {"getUsjntTabooInfoList02"}       # 품목서비스(79만 행)를 조회하지 않는다
 
 
-def test_short_name_rejected():
-    with pytest.raises(DurError):
-        make()[0].resolve("a")
+def test_full_dataset_is_fetched_once_with_paging():
+    c, api = make()
+    c.check_interaction("심바스타틴", "클래리트로마이신")
+    assert sorted(int(p["pageNo"]) for _, p in api.calls) == [1, 2, 3]     # 1300+행 = 3페이지, 이후 조회는 API 호출 없음
+    n = len(api.calls)
+    c.check_interaction("이트라코나졸", "심바스타틴")
+    c.check_interaction("니트로글리세린", "실데나필")
+    assert len(api.calls) == n
 
 
 # ---------- 병용금기 ----------
-def test_contraindicated_found_with_reason():
-    c, _ = make()
-    r = c.check_interaction("심바스타틴", "클래리트로마이신")
-    assert r["status"] == "contraindicated" and r["notice"] == NOTICE
-    reasons = {x["reason"] for x in r["contraindications"]}
-    assert reasons == {"근병증, 횡문근융해의 위험증가"} and r["refs"][0].startswith("DUR:병용금기:")
+def test_contraindicated_with_reasons_and_notice():
+    r = make()[0].check_interaction("심바스타틴", "클래리트로마이신")
+    assert r["status"] == "contraindicated" and r["notice"] == NOTICE and r["match_type"] == "exact"
+    assert {x["reason"] for x in r["contraindications"]} == {"근병증, 횡문근융해의 위험증가", "횡문근융해증 보고"}
+    assert r["refs"][0].startswith("DUR:병용금기:")
 
 
-def test_pairs_are_deduplicated_across_products_and_pages():
-    c, api = make()
-    r = c.check_interaction("심바스타틴", "클래리트로마이신")   # 클래리트로마이신 품목이 없어 심바스타틴 쪽(1200행)을 펼쳐야 함
-    assert r["status"] == "contraindicated" and len(r["contraindications"]) == 1  # 제품 400개 분량의 행이 성분 쌍 1개로
-    assert sum(1 for op, p in api.calls if p.get("itemSeq") == "1" and int(p["numOfRows"]) == 500) == 3  # 1200행 = 3페이지
+def test_search_is_bidirectional():
+    """쌍은 한쪽 방향으로만 등재돼 있어도(클래리트로마이신→심바스타틴) 어느 순서로 물어도 찾아야 한다."""
+    c = make()[0]
+    assert c.check_interaction("심바스타틴", "클래리트로마이신")["status"] == "contraindicated"
+    assert c.check_interaction("클래리트로마이신", "심바스타틴")["status"] == "contraindicated"
 
 
-def test_english_partner_name_matches():
-    c, _ = make()
-    assert c.check_interaction("심바스타틴", "clarithromycin")["status"] == "contraindicated"
+def test_deleted_notices_are_excluded():
+    """삭제된 고시(와파린×아스피린)는 결과에 나오면 안 된다. 와파린은 다른 쌍으로 등재돼 있으므로 '해석은 됨 + 금기 없음'이어야 한다."""
+    r = make()[0].check_interaction("와파린", "아스피린")
+    assert r["status"] == "not_listed" and r["contraindications"] == []
+    assert r["in_dur_list"] == {"와파린": True, "아스피린": True}
+    assert "안전하다는 뜻은 아닙니다" in r["hint"] and r["notice"] == NOTICE
 
 
-def test_reverse_direction_and_smaller_side_first():
-    c, api = make()
-    r = c.check_interaction("이트라코나졸", "심바스타틴")   # 이트라코나졸 쪽 행이 적다(30 vs 1200)
-    assert r["status"] == "contraindicated" and r["checked_from"] == "이트라코나졸"
-    assert not any(p.get("itemSeq") == "1" and int(p["numOfRows"]) == 500 for _, p in api.calls)  # 큰 쪽은 펼치지 않음
+def test_english_names_match():
+    assert make()[0].check_interaction("simvastatin", "clarithromycin")["status"] == "contraindicated"
 
 
-def test_not_listed_never_claims_safe_and_lists_partners():
-    c, _ = make()
-    r = c.check_interaction("아스피린", "와파린")
-    assert r["status"] == "not_listed" and r["contraindications"] == [] and r["notice"] == NOTICE
-    assert "안전하다는 뜻이 아닙니다" in r["hint"] and r["listed_partners"]["names"] == ["메토트렉세이트"]
-    assert r["unresolved"] == ["와파린"]
-
-
-def test_class_name_is_recoverable_via_partner_list():
-    """'질산염'은 DUR에 없는 이름이지만, 상대 목록에 니트로글리세린이 있어 LLM이 계열로 이어갈 수 있다."""
-    r = make()[0].check_interaction("실데나필", "질산염")
-    assert r["status"] == "not_listed" and "희석니트로글리세린" in r["listed_partners"]["names"]
-    assert r["listed_partners"]["of"] == "실데나필"
-
-
-def test_spelling_variant_is_matched_not_missed():
-    """실제 사고 재현: LLM이 '클라리스로마이신'으로 호출 → DUR 표기는 '클래리스로마이신'. 미탐하면 금기를 '금기 아님'으로 안내하게 된다."""
+def test_spelling_variant_is_surfaced_for_confirmation_not_missed():
+    """실제 사고 재현: LLM이 '클라리스로마이신'(DUR 표기는 클래리트로마이신)으로 호출. 놓치면 금기를 '금기 아님'으로 안내하게 된다.
+    다만 유사도만으로는 다른 약과 구분할 수 없으므로 확정하지 않고 needs_confirmation으로 결과와 후보를 함께 준다."""
     r = make()[0].check_interaction("심바스타틴", "클라리스로마이신")
-    assert r["status"] == "contraindicated" and r["match_type"] == "similar_spelling"
-    assert "표기가 비슷한" in r["match_note"] and "클래리스로마이신" in r["match_note"]
+    assert r["status"] == "needs_confirmation" and r["match_type"] == "similar_spelling"
+    assert r["confirm"] == [{"input": "클라리스로마이신", "candidates": ["클래리트로마이신"]}]
+    assert r["contraindications"] and "같은 성분" in r["match_note"] and "다른 약이면" in r["match_note"]
 
 
-def test_exact_match_is_labeled_exact():
-    assert make()[0].check_interaction("심바스타틴", "이트라코나졸")["match_type"] == "exact"
+def test_confirmed_by_requerying_with_the_exact_name():
+    assert make()[0].check_interaction("심바스타틴", "클래리트로마이신")["status"] == "contraindicated"
+
+
+def test_similar_but_different_drug_is_never_asserted_as_contraindicated():
+    """로바스타틴 ≠ 로수바스타틴 (자모 유사도 0.92). 로수바스타틴의 금기를 로바스타틴의 금기로 단정하면 안 된다."""
+    r = make()[0].check_interaction("로바스타틴", "사이클로스포린")
+    assert r["status"] == "needs_confirmation" and r["status"] != "contraindicated"
+    assert r["confirm"][0]["candidates"] == ["로수바스타틴"]
+
+
+def test_similar_candidate_without_any_pair_is_reported_as_did_you_mean():
+    r = make()[0].check_interaction("로바스타틴", "아스피린")
+    assert r["status"] == "not_listed" and r["did_you_mean"][0]["candidates"] == ["로수바스타틴"]
 
 
 def test_different_drugs_are_not_fuzzy_matched():
-    """과경고를 막기 위한 임계값: 이름이 비슷해 보여도 다른 약(케토코나졸 vs 이트라코나졸)은 매칭하지 않는다."""
     r = make()[0].check_interaction("심바스타틴", "케토코나졸")
-    assert r["status"] == "not_listed" and "match_type" not in r
+    assert r["status"] == "not_listed" and r["unresolved"] == ["케토코나졸"]
+
+
+def test_partial_match_is_flagged():
+    r = make()[0].check_interaction("심바스타틴", "클래리트로마이신제피과립")   # 제형 접미사
+    assert r["status"] == "contraindicated" and r["match_type"] == "partial" and "일부만 일치" in r["match_note"]
+
+
+def test_unresolved_side_returns_partner_list_for_class_name_retry():
+    """'질산염'은 DUR에 없는 이름이지만, 실데나필의 병용금기 성분 목록에 니트로글리세린이 있어 LLM이 계열로 이어갈 수 있다."""
+    r = make()[0].check_interaction("실데나필", "질산염")
+    assert r["status"] == "not_listed" and r["unresolved"] == ["질산염"]
+    assert r["listed_partners"]["of"] == "실데나필" and "니트로글리세린" in r["listed_partners"]["names"]
     assert "병용금기로 고시된 성분 전체" in r["listed_partners"]["meaning"]
 
 
-def test_short_names_never_fuzzy_match():
-    from mcp_servers.mfds_dur.client import similar_partners
-    assert similar_partners("이소", [{"partner": "이소프로필"}]) == []
+def test_both_resolved_no_partner_list_needed():
+    r = make()[0].check_interaction("아스피린", "니코란딜")
+    assert r["status"] == "not_listed" and "listed_partners" not in r and "unresolved" not in r
 
 
 def test_both_unresolved():
@@ -172,28 +203,34 @@ def test_both_unresolved():
     assert r["status"] == "unresolved" and r["notice"] == NOTICE
 
 
-def test_second_side_is_checked_when_first_misses():
-    """작은 쪽 목록에 상대가 없으면 반대편도 확인해 표기 차이로 인한 누락을 줄인다."""
+def test_brand_name_is_converted_to_ingredient():
+    """상품명은 품목서비스로 성분을 찾아 변환한다: 심바스타정(심바스타틴) → 심바스타틴."""
     c, api = make()
-    r = c.check_interaction("클래리스로마이신", "심바스타틴")   # 첫 해석은 실패해도 상대 쪽(심바스타틴) 목록에서 찾을 수 있어야 함
-    assert r["status"] == "contraindicated"
+    r = c.check_interaction("심바스타정", "클래리트로마이신")
+    assert r["status"] == "contraindicated" and r["drug_a"]["via"] == "품목명 '심바스타정' → 성분 '심바스타틴'"
+    assert any(op == "getDurPrdlstInfoList03" for op, _ in api.calls)
+
+
+def test_brand_with_unknown_ingredient_stays_unresolved():
+    r = make()[0].check_interaction("타이레놀", "심바스타틴")   # 아세트아미노펜은 DUR 병용금기 목록에 없는 성분
+    assert r["status"] == "not_listed" and r["unresolved"] == ["타이레놀"]
 
 
 # ---------- 안정성 ----------
 def test_truncated_pages_are_rejected_not_silently_accepted():
-    c, _ = make(FakeDur(page_drop=True))
     with pytest.raises(DurError, match="불완전"):
-        c.check_interaction("심바스타틴", "클래리트로마이신")
+        make(FakeDur(page_drop=True))[0].check_interaction("심바스타틴", "클래리트로마이신")
 
 
-@pytest.mark.parametrize("xml,expected", [
-    ("<OpenAPI_ServiceResponse><cmmMsgHeader><returnAuthMsg>SERVICE KEY IS NOT REGISTERED ERROR.</returnAuthMsg></cmmMsgHeader></OpenAPI_ServiceResponse>", "등록되지 않았"),
-    ("<OpenAPI_ServiceResponse><cmmMsgHeader><returnAuthMsg>LIMITED NUMBER OF SERVICE REQUESTS EXCEEDS ERROR.</returnAuthMsg></cmmMsgHeader></OpenAPI_ServiceResponse>", "한도"),
+@pytest.mark.parametrize("resp,expected", [
+    (httpx.Response(200, text="<OpenAPI_ServiceResponse><cmmMsgHeader><returnAuthMsg>SERVICE KEY IS NOT REGISTERED ERROR.</returnAuthMsg></cmmMsgHeader></OpenAPI_ServiceResponse>"), "등록되지 않았"),
+    (httpx.Response(200, text="<OpenAPI_ServiceResponse><cmmMsgHeader><returnAuthMsg>LIMITED NUMBER OF SERVICE REQUESTS EXCEEDS ERROR.</returnAuthMsg></cmmMsgHeader></OpenAPI_ServiceResponse>"), "한도"),
+    (httpx.Response(400, json={"OpenAPI_ServiceResponse": {"cmmMsgHeader": {"errMsg": "NO_OPENAPI_SERVICE_ERROR", "returnAuthMsg": "해당 오픈API 서비스가 없거나 폐기됨"}}}), "서비스를 찾을 수 없습니다"),
 ])
-def test_xml_errors_become_readable_messages_without_key(xml, expected):
-    c, _ = make(FakeDur(error_xml=xml))
+def test_api_errors_become_readable_messages_without_key(resp, expected):
+    """실제로 관찰된 오류 형식 3가지(XML 인증/XML 한도/HTTP 400 JSON)."""
     with pytest.raises(DurError, match=expected) as e:
-        c.resolve("심바스타틴")
+        make(FakeDur(error=resp))[0].check_interaction("심바스타틴", "클래리트로마이신")
     assert KEY_DECODED not in str(e.value) and KEY_ENCODED not in str(e.value)
 
 
@@ -202,26 +239,19 @@ def test_http_failure_is_reported_without_key():
         raise httpx.ConnectError(f"failed {req.url}")
     c = DurClient(KEY_ENCODED, http=httpx.Client(transport=httpx.MockTransport(boom)))
     with pytest.raises(DurError, match="연결") as e:
-        c.resolve("심바스타틴")
+        c.check_interaction("심바스타틴", "클래리트로마이신")
     assert "abc" not in str(e.value)
 
 
+def test_short_name_rejected():
+    with pytest.raises(DurError):
+        make()[0].check_interaction("a", "심바스타틴")
+
+
 # ---------- 캐시 ----------
-def test_results_are_cached_in_memory():
-    c, api = make()
-    big = lambda: sum(1 for _, p in api.calls if int(p["numOfRows"]) == 500)   # 품목 행 전체를 받는 호출
-    c.check_interaction("심바스타틴", "클래리트로마이신")
-    assert big() == 3
-    c.check_interaction("심바스타틴", "클래리트로마이신")   # 완전히 같은 질의 → 추가 호출 없음
-    n = len(api.calls)
-    c.check_interaction("심바스타틴", "클래리스로마이신")   # 같은 대표 품목, 다른 상대 → 1200행을 다시 받지 않는다
-    assert big() == 3 and len(api.calls) - n <= 1
-
-
 def test_cache_persists_across_instances(tmp_path):
     path = str(tmp_path / "dur.db")
-    c1, _ = make(cache_path=path)
-    c1.check_interaction("이트라코나졸", "심바스타틴")
+    make(cache_path=path)[0].check_interaction("이트라코나졸", "심바스타틴")
     c2, api2 = make(cache_path=path)
     assert c2.check_interaction("이트라코나졸", "심바스타틴")["status"] == "contraindicated"
     assert api2.calls == []          # 새 프로세스에서도 API를 다시 호출하지 않는다
@@ -229,41 +259,34 @@ def test_cache_persists_across_instances(tmp_path):
 
 def test_cache_expires_after_ttl(tmp_path):
     now = [1000.0]
-    api = FakeDur()
-    c = DurClient(KEY_ENCODED, http=httpx.Client(transport=httpx.MockTransport(api)), cache_path=str(tmp_path / "d.db"), clock=lambda: now[0])
-    c.resolve("심바스타틴")
+    c, api = make(cache_path=str(tmp_path / "d.db"), clock=lambda: now[0])
+    c.check_interaction("이트라코나졸", "심바스타틴")
     n = len(api.calls)
     now[0] += 31 * 86400
-    c.resolve("심바스타틴")
+    c.check_interaction("이트라코나졸", "심바스타틴")
     assert len(api.calls) > n
 
 
 # ---------- 단일 약물 안전 정보 ----------
-def test_drug_safety_categories():
-    r = make()[0].drug_safety("아스피린")
-    assert r["ingredient"] == "아스피린" and "임부금기" in r["categories"] and "동맥관" in r["categories"]["임부금기"]["notes"][0]
-    assert "노인주의" not in r["categories"] and "안전을 보증하지 않습니다" in r["notice"]
-    assert r["refs"] == ["DUR:임부금기:아스피린"]
-
-
-def test_drug_safety_flag_only_category_has_no_notes():
+def test_drug_safety_includes_age_dose_and_grade_details():
     r = make()[0].drug_safety("졸피뎀")
-    assert r["categories"]["용량주의"]["notes"] == []
+    assert r["ingredient"] == "졸피뎀타르타르산염"
+    assert r["categories"]["특정연령대금기"]["age_base"] == ["18세 이하"]        # 성분서비스에는 연령 기준이 있다
+    assert r["categories"]["용량주의"]["max_qty"] == ["10밀리그램"] and r["categories"]["투여기간주의"]["max_term"] == ["4주"]
+    assert r["categories"]["임부금기"]["grade"] == ["3등급"]
+    assert "노인주의" in r["not_flagged"] and r["refs"][0] == "DUR:임부금기:졸피뎀타르타르산염"
 
 
-def test_drug_safety_lists_unflagged_categories_and_age_limitation():
+def test_drug_safety_excludes_deleted_and_lists_contraindicated_partners():
     r = make()[0].drug_safety("아스피린")
-    assert "노인주의" in r["not_flagged"] and "임부금기" not in r["not_flagged"]     # '노인주의 없음'을 LLM이 추측하지 않게 명시
-    fake_age = {"getSpcifyAgrdeTabooInfoList03": [{"ITEM_SEQ": "9", "ITEM_NAME": "졸피뎀정(졸피뎀)", "INGR_NAME": "졸피뎀", "INGR_ENG_NAME": "Zolpidem",
-                                                    "MIX_TYPE": "단일", "PROHBT_CONTENT": "- 안전성 및 유효성 미확립", "REMARK": None}]}
-    import tests.test_dur_client as me
-    old = dict(me.CATEGORY_ROWS)
-    me.CATEGORY_ROWS.update(fake_age)
-    try:
-        z = make()[0].drug_safety("졸피뎀")
-    finally:
-        me.CATEGORY_ROWS.clear(); me.CATEGORY_ROWS.update(old)
-    assert "API에 포함되어 있지 않습니다" in z["categories"]["특정연령대금기"]["age_note"]   # 연령대를 임의로 노인/소아로 해석하지 못하게
+    assert "임부금기" in r["categories"] and "삭제" not in str(r["categories"])
+    assert r["contraindicated_partners"]["names"] == ["메토트렉세이트"]
+    assert make()[0].drug_safety("삭제된약")["categories"] == {}        # 삭제된 고시만 있는 약은 '없음'
+
+
+def test_drug_safety_via_brand_name():
+    r = make()[0].drug_safety("타이레놀")   # 아세트아미노펜은 어느 범주에도 없음 → 빈 결과 + 안전 보증 아님 고지
+    assert r["categories"] == {} and "안전을 보증하지 않습니다" in r["notice"]
 
 
 # ---------- 매칭 규칙 ----------
