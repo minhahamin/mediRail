@@ -298,3 +298,25 @@ span.win-x { display: inline-block; }
 .btn { white-space: nowrap; flex: none; }
 .composer .row .field { flex: 1; }
 .layout { align-content: start; }
+
+/* ---------- 로그인 / 회원가입 ---------- */
+.auth-card { max-width: 460px; width: 100%; margin: 0 auto; }
+.auth-card.wide { max-width: 760px; }
+.login .win + .win { margin-top: 2px; }
+.login .win:not(.auth-card) { width: 100%; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
+@media (max-width: 640px) { .form-grid { grid-template-columns: 1fr; } }
+.hint { font-size: 12.5px; color: var(--ink-soft); font-weight: 400; }
+.field-error { font-size: 12.5px; color: var(--warn-ink); font-weight: 700; }
+.field[aria-invalid="true"] { border-color: var(--warn); background: var(--warn-bg); }
+fieldset.lbl { border: 0; padding: 0; margin: 0; min-width: 0; }
+fieldset.lbl legend { padding: 0; margin-bottom: 4px; font-size: 13px; color: var(--ink-soft); font-weight: 500; }
+.pick { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--ink); cursor: pointer; }
+.pick input { width: 18px; height: 18px; accent-color: var(--gd); flex: none; }
+.consent .pick { align-items: flex-start; }
+.consent .pick input { margin-top: 3px; }
+.switch { text-align: center; color: var(--ink-soft); font-size: 14px; margin: 4px 0 0; }
+.link { background: none; border: 0; padding: 0; color: var(--gd); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; font-size: inherit; }
+.link:hover { color: var(--ink); }
+code { background: var(--gl); border: 1.5px solid var(--g); border-radius: 6px; padding: 0 5px; font-size: 13px; }
+.login { width: 100%; }

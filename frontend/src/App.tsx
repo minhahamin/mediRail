@@ -3,10 +3,11 @@ import { api, setToken, setUnauthorizedHandler } from "./api";
 import { Appointments } from "./components/Appointments";
 import { Audit } from "./components/Audit";
 import { Chat } from "./components/Chat";
-import { Login } from "./components/Login";
+import { Login, Signup } from "./components/Auth";
 import { Patients } from "./components/Patients";
 import { Soap } from "./components/Soap";
 import { ROLE_ICON, ROLE_LABEL, Sparkle } from "./components/ui";
+import { navigate, useAuthRoute } from "./router";
 import type { PatientLite, Role, Session } from "./types";
 
 type TabId = "chat" | "appointments" | "patients" | "soap" | "audit";
@@ -49,6 +50,7 @@ export default function App() {
   const [selected, setSelected] = useState<number | null>(null);
   const [prefill, setPrefill] = useState("");
   const [expired, setExpired] = useState(false);
+  const authRoute = useAuthRoute();
 
   const logout = useCallback(() => {
     setToken(null);
@@ -57,6 +59,7 @@ export default function App() {
     setTab("chat");
     setSelected(null);
     setPatients([]);
+    navigate("/login", true);
   }, []);
 
   useEffect(() => {
@@ -72,6 +75,7 @@ export default function App() {
     setExpired(false);
     setSession(s);
     setTab("chat");
+    navigate("/", true);   // 로그인·가입 화면 주소에서 벗어난다
   }
 
   useEffect(() => {
@@ -91,7 +95,7 @@ export default function App() {
       <div className="shell">
         <a className="skip" href="#main">본문으로 건너뛰기</a>
         {expired && <div className="note warn" role="alert">세션이 만료되었습니다. 다시 로그인해 주세요.</div>}
-        <Login onLogin={onLogin} />
+        {authRoute === "/signup" ? <Signup onLogin={onLogin} /> : <Login onLogin={onLogin} />}
       </div>
     );
   }

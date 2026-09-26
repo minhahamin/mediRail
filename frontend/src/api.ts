@@ -52,6 +52,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 const post = <T>(path: string, body?: unknown) => request<T>(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
 
 export const api = {
+  register: async (body: { username: string; password: string; name: string; birth_year: number; sex: "F" | "M"; allergies: string; medications: string }): Promise<Session> => {
+    const r = await post<{ access_token: string; role: Session["role"]; name: string; patient_id: number | null }>("/auth/register", body);
+    return { token: r.access_token, role: r.role, name: r.name, patientId: r.patient_id };
+  },
   login: async (username: string, password: string): Promise<Session> => {
     const r = await post<{ access_token: string; role: Session["role"]; name: string; patient_id: number | null }>("/auth/login", { username, password });
     return { token: r.access_token, role: r.role, name: r.name, patientId: r.patient_id };

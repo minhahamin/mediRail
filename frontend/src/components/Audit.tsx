@@ -23,7 +23,7 @@ export function Audit() {
   return (
     <Window title="🔍 감사 로그" actions={<button className="btn sm ghost" onClick={() => void load()}>새로고침</button>}>
       <p className="muted">
-        접근 시도와 도구 호출이 기록됩니다. 입력 원문·약물명·검색어는 남기지 않습니다. <span className="chip warn">security.*</span> 행은 권한 차단 기록입니다.
+        로그인, 예약, 문진·SOAP 작업, AI 대화(사용한 도구와 안전장치 이벤트)가 기록됩니다. 입력 원문·약물명·검색어는 남기지 않습니다. <span className="chip warn">security.*</span> 행은 AI가 권한 밖의 도구를 호출하려다 차단된 기록입니다.
       </p>
       {error && <ErrorNote>{error}</ErrorNote>}
       {!rows ? (
