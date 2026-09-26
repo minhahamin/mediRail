@@ -71,8 +71,9 @@ def check_output(answer: str, sources: list[dict]) -> Checked:
     elif sources and not cited:
         events.append("uncited")
         lines = "\n".join(f"- [{s['id']}] {s['title']}" for s in sources)
-        answer = f"{answer.rstrip()}\n\n**근거(조회된 자료)**\n{lines}"
-    if DISCLAIMER not in answer:
-        answer = f"{answer.rstrip()}\n\n{DISCLAIMER}"
-        events.append("disclaimer_added")
+        answer = f"{answer.replace(DISCLAIMER, '').rstrip()}\n\n**근거(조회된 자료)**\n{lines}"
+    if not answer.rstrip().endswith(DISCLAIMER):  # 면책 문구는 항상 맨 끝
+        if DISCLAIMER not in answer:
+            events.append("disclaimer_added")
+        answer = f"{answer.replace(DISCLAIMER, '').rstrip()}\n\n{DISCLAIMER}"
     return Checked(answer, events)

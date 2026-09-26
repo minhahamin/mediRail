@@ -51,3 +51,9 @@ def test_uncited_answer_with_sources_gets_source_footer():
 def test_no_sources_no_footer():
     r = check_output("주호소: 인후통", [])
     assert r.events == ["disclaimer_added"]
+
+
+def test_source_footer_goes_before_disclaimer():
+    r = check_output(f"내일 10시 예약이 있습니다.\n\n{DISCLAIMER}", [{"id": "D1", "title": "내 예약 목록"}])
+    assert r.text.rstrip().endswith(DISCLAIMER) and r.text.index("근거(조회된 자료)") < r.text.index(DISCLAIMER)
+    assert r.text.count(DISCLAIMER) == 1
