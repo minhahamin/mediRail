@@ -8,3 +8,5 @@ dist/
 *.db
 eval/cache/
 eval/results/
+.venv/
+.pytest_cache/
