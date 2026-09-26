@@ -10,6 +10,7 @@ class Role(StrEnum):
     DOCTOR = "doctor"
     NURSE = "nurse"
     ADMIN = "admin"
+    SUPERADMIN = "superadmin"   # 시스템 관리자: 사용자·권한·감사·현황. 임상 데이터는 사유를 남기는 break-glass로만.
 
 
 PERMISSIONS: dict[Role, frozenset[str]] = {
@@ -24,6 +25,8 @@ PERMISSIONS: dict[Role, frozenset[str]] = {
         "chat", "appointment.read_all", "patient.read_demographics", "patient.read_clinical", "intake.read",
         "encounter.read", "soap.draft", "soap.approve", "literature.search", "drug.check",
     }),
+    # 시스템 관리자는 채팅(AI)과 임상 기능이 없고, 임상 기록은 admin.break_glass로 사유를 남기고 열람한다.
+    Role.SUPERADMIN: frozenset({"audit.read", "admin.users", "admin.stats", "admin.break_glass"}),
     Role.ADMIN: frozenset({
         "chat", "appointment.read_all", "appointment.manage_all", "patient.read_demographics", "audit.read",
     }),

@@ -55,7 +55,7 @@ def _resolve_patient(actor: User, patient_id: int | None, own: str) -> int:
 # ---------- 회원가입 (환자 전용) ----------
 USERNAME_RE = re.compile(r"^[a-z0-9_]{4,20}$")
 # 직원·시스템을 사칭할 수 있는 아이디는 쓸 수 없다 (데모 계정 patient1~4 등은 중복 검사로 막힌다)
-RESERVED_PREFIXES = ("doctor", "nurse", "admin", "staff", "root", "system", "medirail", "support")
+RESERVED_PREFIXES = ("doctor", "nurse", "admin", "staff", "root", "system", "medirail", "support", "superadmin", "sysadmin", "sudo")
 
 
 def register_patient(conn, username: str, password: str, name: str, birth_year: int, sex: str,
@@ -108,11 +108,12 @@ def _clean_text(s) -> str:
 def list_demo_accounts(conn) -> list[dict]:
     """데모 체험 화면에 보여줄 계정. 코드에 박아 둔 목록이 아니라 users 테이블에서 조회한다 (역할별 첫 계정).
     비밀번호나 해시는 돌려주지 않는다."""
+    from .admin import DEMO_ADMIN
     from .seed import USERS
 
-    names = [u[0] for u in USERS]
-    rows = conn.execute(f"SELECT username, role, name FROM users WHERE username IN ({','.join('?' for _ in names)}) ORDER BY id", names)
-    order = ["patient", "nurse", "doctor", "admin"]
+    names = [u[0] for u in USERS] + [DEMO_ADMIN]
+    rows = conn.execute(f"SELECT username, role, name FROM users WHERE username IN ({','.join('?' for _ in names)}) AND disabled=0 ORDER BY id", names)
+    order = ["patient", "nurse", "doctor", "admin", "superadmin"]
     first: dict = {}
     for r in rows:
         first.setdefault(r["role"], {"username": r["username"], "role": r["role"], "name": r["name"]})

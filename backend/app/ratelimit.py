@@ -54,6 +54,10 @@ class DailyCounter:
                 raise RateLimitExceeded("오늘의 데모 AI 사용 한도에 도달했습니다. 내일 다시 이용해 주세요.", 3600)
             self._n += 1
 
+    def count(self) -> int:
+        with self._lock:
+            return self._n if self._day == self._today() else 0
+
     def reset(self) -> None:
         with self._lock:
             self._day, self._n = None, 0
@@ -76,6 +80,11 @@ def check_login(ip: str) -> None:
 
 def check_register(ip: str) -> None:
     _windows.hit(f"register:ip:{ip}", get_settings().register_per_ip_hour, 3600, "회원가입 시도")
+
+
+def daily_usage() -> tuple[int, int]:
+    """(오늘 사용한 AI 요청 수, 일일 상한)."""
+    return _daily.count(), get_settings().daily_chat_limit
 
 
 def reset_all() -> None:

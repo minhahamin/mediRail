@@ -6,8 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from . import agent, db, guardrails, ratelimit, services
-from .auth import User, authenticate, create_token, current_user, require
+from . import admin, agent, db, guardrails, ratelimit, services
+from .auth import AccountDisabled, User, authenticate, create_token, current_user, require
 from .config import get_settings
 from .llm import LLMError
 from .seed import seed
@@ -22,6 +22,7 @@ async def lifespan(app: FastAPI):
     db.init_db(conn)
     if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
         seed(conn)
+    admin.ensure_system_accounts(conn)   # 읽기 전용 데모 관리자 + (환경변수가 있으면) 실제 최상위 관리자
     conn.close()
     yield
 
@@ -49,6 +50,11 @@ def _denied(_, e):
 @app.exception_handler(services.NotFound)
 def _not_found(_, e):
     return JSONResponse({"detail": str(e)}, status_code=404)
+
+
+@app.exception_handler(AccountDisabled)
+def _disabled(_, e):
+    return JSONResponse({"detail": "사용이 중지된 계정입니다. 관리자에게 문의하세요."}, status_code=403)
 
 
 @app.exception_handler(services.Conflict)
@@ -106,7 +112,7 @@ def login(body: LoginIn, request: Request, conn=Depends(db.get_db)):
         services.audit(conn, None, "auth.login_failed", body.username[:40])
         raise HTTPException(401, "아이디 또는 비밀번호가 올바르지 않습니다")
     services.audit(conn, user, "auth.login")
-    return {"access_token": create_token(user), "role": user.role, "name": user.name, "patient_id": user.patient_id}
+    return {"access_token": create_token(user), "role": user.role, "name": user.name, "patient_id": user.patient_id, "read_only": user.read_only}
 
 
 @app.post("/auth/register", status_code=201)
@@ -114,7 +120,7 @@ def register(body: RegisterIn, request: Request, conn=Depends(db.get_db)):
     ratelimit.check_register(client_ip(request))
     user = services.register_patient(conn, body.username, body.password, body.name, body.birth_year, body.sex,
                                      body.allergies, body.medications)
-    return {"access_token": create_token(user), "role": user.role, "name": user.name, "patient_id": user.patient_id}
+    return {"access_token": create_token(user), "role": user.role, "name": user.name, "patient_id": user.patient_id, "read_only": user.read_only}
 
 
 @app.get("/auth/demo-accounts")
@@ -204,6 +210,46 @@ def soap(soap_id: int, user: User = Depends(current_user), conn=Depends(db.get_d
 def approve(soap_id: int, user: User = Depends(current_user), conn=Depends(db.get_db)):
     """AI는 초안만 만들 수 있고, 승인은 의사가 이 엔드포인트로만 한다 (human-in-the-loop)."""
     return services.approve_soap(conn, user, soap_id)
+
+
+class RoleIn(BaseModel):
+    role: str = Field(max_length=20)
+
+
+class BreakGlassIn(BaseModel):
+    patient_id: int
+    reason: str = Field(max_length=400)
+
+
+@app.get("/admin/users")
+def admin_users(user: User = Depends(current_user), conn=Depends(db.get_db)):
+    return admin.list_users(conn, user)
+
+
+@app.patch("/admin/users/{user_id}/role")
+def admin_set_role(user_id: int, body: RoleIn, user: User = Depends(current_user), conn=Depends(db.get_db)):
+    return admin.set_user_role(conn, user, user_id, body.role)
+
+
+@app.post("/admin/users/{user_id}/disable")
+def admin_disable(user_id: int, user: User = Depends(current_user), conn=Depends(db.get_db)):
+    return admin.set_user_disabled(conn, user, user_id, True)
+
+
+@app.post("/admin/users/{user_id}/enable")
+def admin_enable(user_id: int, user: User = Depends(current_user), conn=Depends(db.get_db)):
+    return admin.set_user_disabled(conn, user, user_id, False)
+
+
+@app.get("/admin/stats")
+def admin_stats(user: User = Depends(current_user), conn=Depends(db.get_db)):
+    return admin.stats(conn, user)
+
+
+@app.post("/admin/break-glass")
+def admin_break_glass(body: BreakGlassIn, user: User = Depends(current_user), conn=Depends(db.get_db)):
+    """최상위 관리자의 임상 기록 열람: 사유가 필수이고 열람 사실이 감사 로그에 남는다."""
+    return admin.break_glass(conn, user, body.patient_id, body.reason)
 
 
 @app.get("/audit")

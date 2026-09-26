@@ -120,7 +120,7 @@ def test_signup_is_rate_limited_per_ip(client, monkeypatch):
 
 
 def test_total_users_are_capped(client, monkeypatch):
-    monkeypatch.setenv("MEDIRAIL_MAX_USERS", "9")        # 시드 8명 + 1명
+    monkeypatch.setenv("MEDIRAIL_MAX_USERS", "10")       # 시드 8명 + 읽기 전용 관리자 1명 + 1명
     assert register(client, username="cap00001").status_code == 201
     r = register(client, username="cap00002")
     assert r.status_code == 400 and "정원" in r.json()["detail"]

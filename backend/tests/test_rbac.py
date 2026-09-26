@@ -29,6 +29,18 @@ def test_unknown_role_denied():
     assert not has_any("hacker", ("chat",))
 
 
-@pytest.mark.parametrize("role", [r.value for r in Role])
-def test_every_role_can_chat(role):
+@pytest.mark.parametrize("role", [r.value for r in Role if r is not Role.SUPERADMIN])
+def test_every_clinical_role_can_chat(role):
     assert has_permission(role, "chat")
+
+
+def test_superadmin_has_no_chat_and_no_clinical_access():
+    """시스템 관리자는 AI 대화와 임상 권한이 없다. 임상 기록은 사유를 남기는 break-glass로만 본다."""
+    for perm in ("chat", "patient.read_clinical", "intake.read", "encounter.read", "soap.draft", "soap.approve", "appointment.manage_all"):
+        assert not has_permission("superadmin", perm)
+    assert all(has_permission("superadmin", p) for p in ("admin.users", "admin.stats", "admin.break_glass", "audit.read"))
+
+
+def test_no_other_role_has_admin_permissions():
+    for role in ("patient", "nurse", "doctor", "admin"):
+        assert not any(has_permission(role, p) for p in ("admin.users", "admin.stats", "admin.break_glass"))
