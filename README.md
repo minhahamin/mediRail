@@ -8,13 +8,15 @@
 > 포트폴리오/학습용 프로젝트입니다. 모든 환자·진료 데이터는 **합성 데이터**이며 실제 의료 서비스에 사용할 수 없습니다.
 
 > **라이브 데모: <https://medirail-web-production.up.railway.app>**
-> 로그인 화면 아래의 **데모 계정**(환자·간호사·의사·원무)으로 바로 체험할 수 있고, 회원가입은 환자 계정만 가능합니다. (Railway: 웹 + API + PostgreSQL)
+> 로그인 화면의 **"데모 계정으로 바로 체험하기"**(환자·간호사·의사·원무, 계정 목록은 DB에서 조회)로 바로 체험할 수 있고, 회원가입은 환자 계정만 가능합니다. (Railway: 웹 + API + PostgreSQL)
 
-| 로그인 — 아래에 데모 계정 | 회원가입 (환자 전용) |
+| 로그인 | 데모 계정 (목록·데이터 모두 DB에서 조회) |
 |:-:|:-:|
-| ![로그인](docs/screenshots/login.png) | ![회원가입](docs/screenshots/signup.png) |
-| **의사: PubMed 문헌 검색 (MCP)** | **환자: 응급 문장은 LLM 없이 즉시 119 안내** |
-| ![의사 문헌 검색](docs/screenshots/doctor-literature.png) | ![환자: 응급 즉시 안내](docs/screenshots/patient-emergency.png) |
+| ![로그인](docs/screenshots/login.png) | ![데모 계정](docs/screenshots/demo.png) |
+| **회원가입 (환자 전용)** | **환자: 응급 문장은 LLM 없이 즉시 119 안내** |
+| ![회원가입](docs/screenshots/signup.png) | ![환자 응급 안내](docs/screenshots/patient-emergency.png) |
+| **의사: PubMed 문헌 검색 (MCP)** | |
+| ![의사 문헌 검색](docs/screenshots/doctor-literature.png) | |
 
 ---
 
@@ -435,7 +437,7 @@ erDiagram
 | 외부 지식 | **MCP 서버** (Python MCP SDK 2.x): PubMed(NCBI E-utilities), 식약처 DUR(공공데이터포털) |
 | 프론트엔드 | React 19 · TypeScript · Vite · 세이지 그린 스티커 스타일 ([디자인 가이드](docs/design.md)) · 외부 UI 라이브러리 없음 |
 | 배포 | **Railway** (웹: nginx / API: uvicorn + MCP 서브프로세스 / PostgreSQL) · Docker |
-| 테스트/평가 | pytest (281개, SQLite·PostgreSQL 양쪽 통과) · 자체 평가 하네스 (45문항) |
+| 테스트/평가 | pytest (284개, SQLite·PostgreSQL 양쪽 통과) · 자체 평가 하네스 (45문항) |
 
 ---
 
@@ -461,7 +463,7 @@ MediRail/
 │   │   ├── clinic.py       # 진료시간·슬롯·취소 마감 규칙
 │   │   ├── db.py, seed.py  # SQLite/PostgreSQL 어댑터, 스키마, 합성 데이터
 │   │   └── config.py
-│   └── tests/              # 281 tests
+│   └── tests/              # 284 tests
 ├── frontend/               # React + Vite (Dockerfile, nginx.conf.template)
 │   └── src/                # App, router, api, components/{Auth,Chat,Appointments,Patients,Soap,Audit,ui}
 ├── mcp_servers/
@@ -563,8 +565,8 @@ railway up frontend --path-as-root --service medirail-web --ci
 ## 테스트
 ```bash
 cd backend
-python -m pytest -q                                # 281 passed (SQLite)
-MEDIRAIL_TEST_DB=postgres python -m pytest -q      # 281 passed (임베디드 PostgreSQL, pgserver)
+python -m pytest -q                                # 284 passed (SQLite)
+MEDIRAIL_TEST_DB=postgres python -m pytest -q      # 284 passed (임베디드 PostgreSQL, pgserver)
 ```
 
 **같은 테스트 전체를 SQLite와 PostgreSQL 양쪽에서** 돌립니다. 배포 DB가 다른데 개발 DB로만 검증하는 위험을 없애기 위해, DB 어댑터(`?`→`%s`, `RETURNING id`, 시퀀스 동기화)를 두고 로컬에서 실제 PostgreSQL 경로를 검증한 뒤 배포했습니다.
@@ -572,6 +574,7 @@ MEDIRAIL_TEST_DB=postgres python -m pytest -q      # 281 passed (임베디드 Po
 | 파일 | 테스트 | 검증 내용 |
 |---|---:|---|
 | `test_dur_client.py` | 37 | 식약처 API 특성 재현 모의 서버: 삭제 고시 제외, 양방향 검색, 500행 초과 무응답, 불완전 페이지, 3종 오류 형식, 키 미노출, 캐시(TTL·영속), 유사 표기(`needs_confirmation`)와 다른 약 구분, 상품명→성분 변환 |
+| `test_demo_accounts.py` | 3 | 데모 계정 목록을 **DB에서 조회**함을 증명 (DB 값을 바꾸면 응답이 바뀌고, 삭제하면 사라짐. 비밀번호·해시 미노출) |
 | `test_register.py` | 30 | 회원가입: 환자 전용·권한 상승 불가(`role` 주입 무시), 검증 16종, 사칭 아이디 차단, 중복 409, IP 제한, 계정 수 상한, 원자성, 감사 로그 |
 | `test_api.py` | 26 | HTTP 레벨 RBAC 매트릭스, 예약 REST, `/chat` |
 | `test_services.py` | 25 | 소유권 스코프, 필드 단위 접근 제어, 예약 규칙·정원, 취소 마감, SOAP 초안/승인 분리 |
@@ -625,7 +628,7 @@ REST와 에이전트 도구가 같은 함수를 호출하므로, LLM이 어떻�
 MCP 서버를 독립 서비스로 배포하면 구조는 더 깔끔하지만 서비스가 5개(웹, API, MCP×2, DB)로 늘어 월 비용이 커집니다. 예산 제약이 있는 포트폴리오라 stdio 서브프로세스로 같은 이미지에 넣었습니다. MCP 서버 자체는 독립 프로세스라 그대로 분리할 수 있고(로드맵), Claude Code 등 다른 MCP 클라이언트에서도 쓸 수 있습니다.
 
 **왜 DB 어댑터를 만들었나?**
-개발은 SQLite, 배포는 PostgreSQL입니다. ORM으로 갈아타는 대신 `sqlite3` 스타일 인터페이스를 흉내 내는 얇은 어댑터로 서비스 코드를 그대로 두고, **같은 281개 테스트를 두 DB에서 모두 통과**시켜 이식을 검증했습니다.
+개발은 SQLite, 배포는 PostgreSQL입니다. ORM으로 갈아타는 대신 `sqlite3` 스타일 인터페이스를 흉내 내는 얇은 어댑터로 서비스 코드를 그대로 두고, **같은 284개 테스트를 두 DB에서 모두 통과**시켜 이식을 검증했습니다.
 
 **왜 검증 실패 시 폐기가 아니라 자가 교정인가?**
 가드레일이 답변을 폐기하면 안전하지만 쓸모없습니다. 위반 사유를 알려 한 번 다시 쓰게 하면 모델이 도구를 호출해 올바른 답을 내는 경우가 많았습니다. 다만 무한 재시도는 비용과 지연을 키우므로 1회로 제한하고, 그래도 위반하면 폐기합니다.
