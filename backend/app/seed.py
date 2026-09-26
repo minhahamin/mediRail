@@ -48,9 +48,9 @@ ENCOUNTERS = [  # patient_id, doctor_username, days_ago, cc, notes
 def seed(conn: sqlite3.Connection, today: date | None = None) -> None:
     today = today or date.today()
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
-    conn.executemany("INSERT INTO patients VALUES (?,?,?,?,?,?)", PATIENTS)
+    conn.executemany("INSERT INTO patients (id, name, birth_year, sex, allergies, medications) VALUES (?,?,?,?,?,?)", PATIENTS)
     for i, (u, role, name, pid) in enumerate(USERS, start=1):
-        conn.execute("INSERT INTO users VALUES (?,?,?,?,?,?)", (i, u, hash_password(DEMO_PASSWORD), role, name, pid))
+        conn.execute("INSERT INTO users (id, username, password_hash, role, name, patient_id) VALUES (?,?,?,?,?,?)", (i, u, hash_password(DEMO_PASSWORD), role, name, pid))
     uid = {u: i for i, (u, *_r) in enumerate(USERS, start=1)}
     conn.executemany("INSERT INTO intakes (patient_id, text, created_at) VALUES (?,?,?)", [(p, t, now) for p, t in INTAKES])
     for pid, doc, ago, cc, notes in ENCOUNTERS:

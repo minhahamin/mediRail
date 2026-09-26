@@ -18,8 +18,9 @@ CREATE TABLE IF NOT EXISTS patients (
 );
 CREATE TABLE IF NOT EXISTS users (
   id {PK}, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('patient','doctor','nurse','admin')),
-  name TEXT NOT NULL, patient_id INTEGER REFERENCES patients(id)
+  role TEXT NOT NULL CHECK (role IN ('patient','doctor','nurse','admin','superadmin')),
+  name TEXT NOT NULL, patient_id INTEGER REFERENCES patients(id),
+  read_only INTEGER NOT NULL DEFAULT 0, disabled INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS intakes (
   id {PK}, patient_id INTEGER NOT NULL REFERENCES patients(id),
@@ -141,10 +142,51 @@ def connect(target: str | None = None):
     return conn
 
 
+ROLE_CHECK = "CHECK (role IN ('patient','doctor','nurse','admin','superadmin'))"
+
+
 def init_db(conn) -> None:
     schema = SCHEMA.replace("{PK}", "SERIAL PRIMARY KEY" if is_postgres(conn) else "INTEGER PRIMARY KEY")
     conn.executescript(schema)
     conn.commit()
+    migrate(conn)
+
+
+def migrate(conn) -> None:
+    """이미 배포된 DB를 데이터 손실 없이 최신 스키마로 올린다 (멱등). users에 read_only/disabled 컬럼을 더하고 role 제약에 superadmin을 허용한다."""
+    if is_postgres(conn):
+        conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS read_only INTEGER NOT NULL DEFAULT 0")
+        conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS disabled INTEGER NOT NULL DEFAULT 0")
+        conn.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check")
+        conn.execute(f"ALTER TABLE users ADD CONSTRAINT users_role_check {ROLE_CHECK}")
+        conn.commit()
+        return
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(users)")}
+    ddl = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").fetchone()[0]
+    if "superadmin" in ddl and {"read_only", "disabled"} <= cols:
+        return
+    # SQLite는 CHECK 제약을 바꿀 수 없어 테이블을 다시 만들며 데이터를 옮긴다 (FK는 잠시 끈다)
+    conn.commit()
+    conn.execute("PRAGMA foreign_keys=OFF")
+    conn.execute("PRAGMA legacy_alter_table=ON")
+    conn.execute("ALTER TABLE users RENAME TO users_old")
+    conn.executescript(SCHEMA_USERS_SQLITE)
+    keep = ", ".join(c for c in ("id", "username", "password_hash", "role", "name", "patient_id", "read_only", "disabled") if c in cols)
+    conn.execute(f"INSERT INTO users ({keep}) SELECT {keep} FROM users_old")
+    conn.execute("DROP TABLE users_old")
+    conn.execute("PRAGMA legacy_alter_table=OFF")
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.commit()
+
+
+SCHEMA_USERS_SQLITE = """
+CREATE TABLE users (
+  id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('patient','doctor','nurse','admin','superadmin')),
+  name TEXT NOT NULL, patient_id INTEGER REFERENCES patients(id),
+  read_only INTEGER NOT NULL DEFAULT 0, disabled INTEGER NOT NULL DEFAULT 0
+);
+"""
 
 
 def resync_sequences(conn) -> None:

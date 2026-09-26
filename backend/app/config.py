@@ -38,6 +38,8 @@ class Settings:
     login_per_ip_min: int
     register_per_ip_hour: int
     max_users: int
+    superadmin_username: str
+    superadmin_password: str
 
     @property
     def is_production(self) -> bool:
@@ -65,4 +67,7 @@ def get_settings() -> Settings:
         login_per_ip_min=int(e("MEDIRAIL_LOGIN_PER_IP_MIN", "10")),
         register_per_ip_hour=int(e("MEDIRAIL_REGISTER_PER_IP_HOUR", "5")),
         max_users=int(e("MEDIRAIL_MAX_USERS", "300")),   # 공개 데모의 DB 무한 증가 방지
+        # 실제 최상위 관리자(비공개): 환경변수로만 만들고 회전한다. 저장소·화면 어디에도 없다.
+        superadmin_username=e("MEDIRAIL_SUPERADMIN_USERNAME", ""),
+        superadmin_password=e("MEDIRAIL_SUPERADMIN_PASSWORD", ""),
     )
