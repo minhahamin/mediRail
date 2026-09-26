@@ -18,10 +18,11 @@ PERMISSIONS: dict[Role, frozenset[str]] = {
     }),
     Role.NURSE: frozenset({
         "chat", "appointment.read_all", "patient.read_demographics", "patient.read_clinical", "intake.read",
+        "literature.search",
     }),
     Role.DOCTOR: frozenset({
         "chat", "appointment.read_all", "patient.read_demographics", "patient.read_clinical", "intake.read",
-        "encounter.read", "soap.draft", "soap.approve",
+        "encounter.read", "soap.draft", "soap.approve", "literature.search",
     }),
     Role.ADMIN: frozenset({
         "chat", "appointment.read_all", "appointment.manage_all", "patient.read_demographics", "audit.read",

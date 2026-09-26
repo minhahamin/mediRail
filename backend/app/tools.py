@@ -8,7 +8,7 @@ import json
 from dataclasses import dataclass
 from typing import Callable
 
-from . import clinic, services
+from . import clinic, mcp_bridge, services
 from .auth import User
 from .guardrails import FORBIDDEN_CLAIM
 from .rbac import has_any
@@ -30,6 +30,7 @@ class ToolResult:
     data: dict | None = None
     error: str = ""
     denied: bool = False
+    refs: tuple = ()  # 이 결과에서 인용 가능한 외부 식별자 (예: 'PMID:123')
 
 
 def _obj(props: dict, required: list[str] | None = None) -> dict:
@@ -90,6 +91,20 @@ def _encounter(conn, user, args):
     return f"진료 기록 #{e['id']}", e
 
 
+def _literature(conn, user, args):
+    query = str(args.get("query", "")).strip()
+    n = max(1, min(int(args.get("max_results") or 5), 8))
+    years = int(args["recent_years"]) if args.get("recent_years") else None
+    services.audit(conn, user, "literature.search", f"q_len={len(query)} n={n}")  # 질의 원문은 기록하지 않음(환자 정보가 섞일 수 있음)
+    try:
+        data = mcp_bridge.get_bridge().call("pubmed", "search_pubmed", {"query": query, "max_results": n, "recent_years": years})
+    except mcp_bridge.McpToolError as e:
+        raise services.ServiceError(str(e))
+    except mcp_bridge.McpError as e:
+        raise services.ServiceError(f"문헌 검색 서비스를 일시적으로 사용할 수 없습니다 ({e})")
+    return f"PubMed 검색: {query[:60]} ({data.get('returned', 0)}건)", data
+
+
 def _soap_draft(conn, user, args):
     parts = {k: str(args.get(k, "")).strip() for k in ("subjective", "objective", "assessment", "plan")}
     if not all(parts.values()):
@@ -103,6 +118,11 @@ def _soap_draft(conn, user, args):
 
 
 TOOLS: dict[str, Tool] = {t.name: t for t in [
+    Tool("search_medical_literature",
+         "PubMed에서 의학 논문을 검색한다(MCP). query는 반드시 영어 키워드/MeSH 용어로 쓴다(예: 'warfarin aspirin bleeding risk'). "
+         "결과의 pmid, 연도, 논문 유형(pub_types), 초록을 근거로만 답한다.",
+         _obj({"query": _STR, "max_results": _INT, "recent_years": {**_INT, "description": "최근 N년으로 제한(선택)"}}, ["query"]),
+         ("literature.search",), _literature),
     Tool("get_clinic_info", "클리닉 진료시간·예약 규칙·준비물 안내를 조회한다.", _obj({}), ("chat",), _clinic_info),
     Tool("get_available_slots", "특정 날짜의 예약 가능한 시간 슬롯을 조회한다.",
          _obj({"date": {**_STR, "description": "YYYY-MM-DD"}}, ["date"]), ("chat",), _slots),
@@ -149,7 +169,7 @@ def execute(conn, user: User, name: str, raw_args) -> ToolResult:
         if not isinstance(args, dict):
             raise ValueError
         title, data = tool.run(conn, user, args)
-        return ToolResult(True, title, data)
+        return ToolResult(True, title, data, refs=tuple(data.get("refs", ())) if isinstance(data, dict) else ())
     except services.PermissionDenied as e:
         services.audit(conn, user, "security.access_denied", f"tool={name} {e}")
         return ToolResult(False, error=str(e), denied=True)
