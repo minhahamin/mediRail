@@ -3,7 +3,7 @@ import { api, setToken, setUnauthorizedHandler } from "./api";
 import { Appointments } from "./components/Appointments";
 import { Audit } from "./components/Audit";
 import { Chat } from "./components/Chat";
-import { Login, Signup } from "./components/Auth";
+import { Demo, Login, Signup } from "./components/Auth";
 import { Patients } from "./components/Patients";
 import { Soap } from "./components/Soap";
 import { Icon, type IconName } from "./components/Icon";
@@ -96,7 +96,7 @@ export default function App() {
       <div className="shell">
         <a className="skip" href="#main">본문으로 건너뛰기</a>
         {expired && <div className="note warn" role="alert">세션이 만료되었습니다. 다시 로그인해 주세요.</div>}
-        {authRoute === "/signup" ? <Signup onLogin={onLogin} /> : <Login onLogin={onLogin} />}
+        {authRoute === "/signup" ? <Signup onLogin={onLogin} /> : authRoute === "/demo" ? <Demo onLogin={onLogin} /> : <Login onLogin={onLogin} />}
       </div>
     );
   }
@@ -109,7 +109,7 @@ export default function App() {
       <header className="browser">
         <TrafficLights />
         <span className="brand"><Sparkle /><span>Medi<b>Rail</b></span></span>
-        <span className="addr">medirail · 근거 기반 의료 AI 에이전트 (데모 · 합성 데이터)</span>
+        <span className="addr">medirail · 근거 기반 의료 AI 에이전트 (포트폴리오 · 합성 데이터)</span>
         <span className="who">
           <span className="chip"><Icon name={ROLE_ICON[session.role]} /> {ROLE_LABEL[session.role]}</span>
           <span>{session.name}</span>
@@ -146,7 +146,7 @@ export default function App() {
       </div>
 
       <footer className="footer">
-        MediRail은 진단·처방을 하지 않는 포트폴리오 데모입니다. 모든 데이터는 합성 데이터입니다. <b>최종 판단은 반드시 의사와 상담하세요.</b>
+        MediRail은 진단·처방을 하지 않는 포트폴리오입니다. 모든 데이터는 합성 데이터입니다. <b>최종 판단은 반드시 의사와 상담하세요.</b>
       </footer>
     </div>
   );

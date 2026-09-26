@@ -91,3 +91,9 @@ export interface AuditRow {
   action: string;
   detail: string | null;
 }
+
+export interface DemoAccount {
+  username: string;
+  role: Role;
+  name: string;
+}

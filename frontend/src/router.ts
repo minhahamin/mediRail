@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 
 /** 의존성 없는 미니 라우터: History API 기반. 배포(nginx)가 모든 경로를 index.html로 돌려주므로 새로고침해도 동작한다. */
-export type AuthRoute = "/login" | "/signup";
+export type AuthRoute = "/login" | "/signup" | "/demo";
 
-const normalize = (path: string): AuthRoute => (path.replace(/\/+$/, "") === "/signup" ? "/signup" : "/login");
+const normalize = (path: string): AuthRoute => {
+  const p = path.replace(/\/+$/, "");
+  return p === "/signup" ? "/signup" : p === "/demo" ? "/demo" : "/login";
+};
 
 export function navigate(path: string, replace = false) {
   if (window.location.pathname === path) return;

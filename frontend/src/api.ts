@@ -1,5 +1,5 @@
 import type {
-  Appointment, AuditRow, ChatResponse, Encounter, Intake, PatientLite, PatientProfile, Session, SoapNote,
+  Appointment, AuditRow, ChatResponse, DemoAccount, Encounter, Intake, PatientLite, PatientProfile, Session, SoapNote,
 } from "./types";
 
 export const API_URL: string = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") || "http://127.0.0.1:8000";
@@ -52,6 +52,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 const post = <T>(path: string, body?: unknown) => request<T>(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
 
 export const api = {
+  demoAccounts: () => request<DemoAccount[]>("/auth/demo-accounts"),
   register: async (body: { username: string; password: string; name: string; birth_year: number; sex: "F" | "M"; allergies: string; medications: string }): Promise<Session> => {
     const r = await post<{ access_token: string; role: Session["role"]; name: string; patient_id: number | null }>("/auth/register", body);
     return { token: r.access_token, role: r.role, name: r.name, patientId: r.patient_id };

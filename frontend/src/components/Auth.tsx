@@ -1,7 +1,7 @@
-import { useId, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
 import { api, ApiError } from "../api";
 import { navigate } from "../router";
-import type { Role, Session } from "../types";
+import type { DemoAccount, Role, Session } from "../types";
 import { Icon } from "./Icon";
 import { ErrorNote, Heart, Pin, ROLE_ICON, Sparkle, Tape, Window } from "./ui";
 
@@ -18,7 +18,7 @@ function AuthShell({ children }: { children: ReactNode }) {
       </div>
       {children}
       <p className="demo-note">
-        포트폴리오 데모입니다. 모든 환자·진료 데이터는 <b>합성 데이터</b>이며, 진단·처방은 하지 않습니다. 최종 판단은 반드시 의사와 상담하세요.
+        포트폴리오입니다. 모든 환자·진료 데이터는 <b>합성 데이터</b>이며, 진단·처방은 하지 않습니다. 최종 판단은 반드시 의사와 상담하세요.
       </p>
     </main>
   );
@@ -41,12 +41,12 @@ function Field({ label, hint, error, children }: { label: string; hint?: string;
 }
 
 /* ---------- 로그인 ---------- */
-const DEMOS: { username: string; role: Role; name: string; desc: string }[] = [
-  { username: "patient1", role: "patient", name: "김하늘", desc: "내 예약 관리, 증상 문진, 약물 안전 정보" },
-  { username: "nurse1", role: "nurse", name: "송하린", desc: "문진 요약, 예약 현황, 문헌·약물 조회" },
-  { username: "doctor1", role: "doctor", name: "강서준", desc: "문진 요약, SOAP 초안·승인, 문헌·약물 조회" },
-  { username: "admin1", role: "admin", name: "임도현", desc: "예약 대행, 감사 로그 (임상 정보 접근 불가)" },
-];
+const ROLE_DESC: Record<Role, string> = {
+  patient: "내 예약 관리, 증상 문진, 약물 안전 정보",
+  nurse: "문진 요약, 예약 현황, 문헌·약물 조회",
+  doctor: "문진 요약, SOAP 초안·승인, 문헌·약물 조회",
+  admin: "예약 대행, 감사 로그 (임상 정보 접근 불가)",
+};
 const ROLE_NAME: Record<Role, string> = { patient: "환자", nurse: "간호사", doctor: "의사", admin: "원무" };
 
 export function Login({ onLogin }: { onLogin: (s: Session) => void }) {
@@ -92,25 +92,75 @@ export function Login({ onLogin }: { onLogin: (s: Session) => void }) {
               회원가입
             </button>
           </p>
+          <p className="switch">
+            <button type="button" className="link" onClick={() => navigate("/demo")}>
+              데모 계정으로 바로 체험하기
+            </button>
+          </p>
         </form>
       </Window>
 
+    </AuthShell>
+  );
+}
+
+/* ---------- 데모 계정 페이지 ---------- */
+export function Demo({ onLogin }: { onLogin: (s: Session) => void }) {
+  const [accounts, setAccounts] = useState<DemoAccount[] | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api
+      .demoAccounts()
+      .then(setAccounts)
+      .catch((e) => setError(e instanceof ApiError ? e.message : "데모 계정을 불러오지 못했습니다."));
+  }, []);
+
+  async function enter(username: string) {
+    setBusy(true);
+    setError("");
+    try {
+      onLogin(await api.login(username, "demo1234"));
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "로그인에 실패했습니다.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <AuthShell>
       <Window title={<><Icon name="users" /> 데모 계정으로 바로 체험하기</>}>
-        <p className="muted" style={{ marginTop: 0 }}>역할마다 보이는 화면과 권한이 다릅니다. 클릭하면 바로 입장합니다. (비밀번호 <code>demo1234</code>)</p>
-        <div className="accounts">
-          {DEMOS.map((d, i) => (
-            <button key={d.username} type="button" className="account" disabled={busy} onClick={() => void submit(d.username, "demo1234")}>
-              {i % 2 === 0 ? <Tape /> : <Pin />}
-              <span className="role-badge"><Icon name={ROLE_ICON[d.role]} /></span>
-              <strong>{ROLE_NAME[d.role]}</strong>
-              <small>{d.name} · {d.username}</small>
-              <small>{d.desc}</small>
-              <span className="go">
-                <Heart className="inline" /> 입장하기 →
-              </span>
-            </button>
-          ))}
+        <div className="note">
+          <Icon name="check" /> <b>하드코딩이 아닙니다.</b> 이 계정 목록과 환자·진료·예약 등 <b>모든 데이터는 PostgreSQL DB에 저장</b>되어 있습니다.
+          로그인할 때 DB에 저장된 비밀번호 해시로 검증하고, 화면의 내용은 API가 DB에서 읽어 옵니다. (최초 배포 때 합성 데이터를 DB에 넣어 두었습니다.)
         </div>
+        <p className="muted">역할마다 보이는 화면과 권한이 다릅니다. 클릭하면 바로 입장합니다. (비밀번호 <code>demo1234</code>)</p>
+        {error && <ErrorNote>{error}</ErrorNote>}
+        {!accounts && !error ? (
+          <p className="muted" role="status">DB에서 계정을 불러오는 중…</p>
+        ) : (
+          <div className="accounts">
+            {(accounts ?? []).map((d, i) => (
+              <button key={d.username} type="button" className="account" disabled={busy} onClick={() => void enter(d.username)}>
+                {i % 2 === 0 ? <Tape /> : <Pin />}
+                <span className="role-badge"><Icon name={ROLE_ICON[d.role]} /></span>
+                <strong>{ROLE_NAME[d.role]}</strong>
+                <small>{d.name} · {d.username}</small>
+                <small>{ROLE_DESC[d.role]}</small>
+                <span className="go">
+                  <Heart className="inline" /> 입장하기 →
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+        <p className="switch">
+          <button type="button" className="link" onClick={() => navigate("/login")}>← 로그인으로 돌아가기</button>
+          {" · "}
+          <button type="button" className="link" onClick={() => navigate("/signup")}>회원가입</button>
+        </p>
       </Window>
     </AuthShell>
   );
@@ -229,7 +279,7 @@ export function Signup({ onLogin }: { onLogin: (s: Session) => void }) {
             <label className="pick">
               <input type="checkbox" checked={f.consent} onChange={(e) => set("consent", e.target.checked)} aria-invalid={!!err("consent")} />
               <span>
-                이 서비스는 <b>포트폴리오 데모</b>입니다. <b>실제 실명·연락처·병력 등 개인정보와 의료정보를 입력하지 않겠습니다.</b> 입력한 내용은 데모 화면에서 의료진 역할에게 보일 수 있습니다.
+                이 서비스는 <b>포트폴리오</b>입니다. <b>실제 실명·연락처·병력 등 개인정보와 의료정보를 입력하지 않겠습니다.</b> 입력한 내용은 데모 화면에서 의료진 역할에게 보일 수 있습니다.
               </span>
             </label>
             {err("consent") && <span className="field-error" role="alert">{err("consent")}</span>}

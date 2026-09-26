@@ -335,3 +335,8 @@ code { background: var(--gl); border: 1.5px solid var(--g); border-radius: 6px; 
 h3 .icon { color: var(--gd); }
 .win-bar { justify-content: flex-start; }
 .win-actions { margin-left: auto; }
+
+.note .icon { color: var(--gd); }
+.note + .muted { margin-top: 14px; }
+.accounts + .switch, .win-body > .switch { margin-top: 16px; }
+.switch + .switch { margin-top: 6px; }
