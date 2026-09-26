@@ -104,7 +104,26 @@ def latest_encounter_id(conn, actor: User, patient_id: int) -> int:
     return row["id"]
 
 
+def list_encounters(conn, actor: User, patient_id: int) -> list[dict]:
+    _need(actor, "encounter.read")
+    return [dict(r) for r in conn.execute(
+        "SELECT id, visit_date, chief_complaint, notes FROM encounters WHERE patient_id=? ORDER BY visit_date DESC, id DESC", (patient_id,))]
+
+
 # ---------- SOAP: AI는 초안만, 승인은 의사 ----------
+def list_soaps(conn, actor: User, status: str | None = None) -> list[dict]:
+    _need(actor, "encounter.read")
+    if status not in (None, "draft", "approved"):
+        raise ServiceError("status는 draft 또는 approved여야 합니다")
+    where, args = ("WHERE s.status=?", (status,)) if status else ("", ())
+    rows = conn.execute(
+        "SELECT s.id, s.encounter_id, e.patient_id, p.name patient_name, e.visit_date, e.chief_complaint, "
+        "s.subjective, s.objective, s.assessment, s.plan, s.status, s.created_at "
+        "FROM soap_notes s JOIN encounters e ON e.id=s.encounter_id JOIN patients p ON p.id=e.patient_id "
+        f"{where} ORDER BY s.id DESC", args)
+    return [dict(r) for r in rows]
+
+
 def save_soap_draft(conn, actor: User, encounter_id: int, subjective: str, objective: str,
                     assessment: str, plan: str) -> dict:
     _need(actor, "soap.draft")

@@ -1,12 +1,12 @@
 """FastAPI 진입점. 라우트는 권한 의존성 + services 호출만 담당한다."""
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from . import agent, db, services
+from . import agent, db, guardrails, ratelimit, services
 from .auth import User, authenticate, create_token, current_user, require
 from .config import get_settings
 from .llm import LLMError
@@ -15,6 +15,9 @@ from .seed import seed
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    s = get_settings()
+    if s.is_production and s.jwt_secret.startswith("dev-only"):   # 운영에서 기본 시크릿으로 뜨는 사고를 막는다
+        raise RuntimeError("MEDIRAIL_JWT_SECRET을 설정하세요 (운영 환경에서는 기본 시크릿을 쓸 수 없습니다)")
     conn = db.connect()
     db.init_db(conn)
     if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
@@ -24,8 +27,18 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="MediRail API", version="0.2.0", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-                   allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(CORSMiddleware, allow_origins=list(get_settings().cors_origins), allow_methods=["*"], allow_headers=["*"])
+
+
+def client_ip(request: Request) -> str:
+    """프록시(Railway) 뒤에서는 X-Forwarded-For의 첫 값이 실제 클라이언트다."""
+    fwd = request.headers.get("x-forwarded-for", "")
+    return fwd.split(",")[0].strip() or (request.client.host if request.client else "unknown")
+
+
+@app.exception_handler(ratelimit.RateLimitExceeded)
+def _rate_limited(_, e):
+    return JSONResponse({"detail": e.message}, status_code=429, headers={"Retry-After": str(e.retry_after)})
 
 
 @app.exception_handler(services.PermissionDenied)
@@ -70,7 +83,8 @@ def health():
 
 
 @app.post("/auth/login")
-def login(body: LoginIn, conn=Depends(db.get_db)):
+def login(body: LoginIn, request: Request, conn=Depends(db.get_db)):
+    ratelimit.check_login(client_ip(request))
     user = authenticate(conn, body.username, body.password)
     if not user:
         services.audit(conn, None, "auth.login_failed", body.username[:40])
@@ -85,7 +99,10 @@ def me(user: User = Depends(current_user)):
 
 
 @app.post("/chat")
-def chat(body: ChatIn, user: User = Depends(require("chat")), conn=Depends(db.get_db)):
+def chat(body: ChatIn, request: Request, user: User = Depends(require("chat")), conn=Depends(db.get_db)):
+    # 응급 안내는 LLM을 호출하지 않으므로 제한하지 않는다 (한도에 걸려 119 안내가 막히면 안 된다)
+    if not (user.role == "patient" and guardrails.detect_emergency(body.message)):
+        ratelimit.check_chat(user.id, client_ip(request))
     try:
         r = agent.run_agent(conn, user, body.message, history=body.history, patient_id=body.patient_id)
     except LLMError as e:
@@ -102,6 +119,11 @@ def patients(user: User = Depends(current_user), conn=Depends(db.get_db)):
 @app.get("/patients/{patient_id}")
 def patient(patient_id: int, user: User = Depends(current_user), conn=Depends(db.get_db)):
     return services.get_patient_profile(conn, user, patient_id)
+
+
+@app.get("/patients/{patient_id}/encounters")
+def patient_encounters(patient_id: int, user: User = Depends(current_user), conn=Depends(db.get_db)):
+    return services.list_encounters(conn, user, patient_id)
 
 
 @app.get("/patients/{patient_id}/intake")
@@ -132,6 +154,11 @@ def book(body: BookIn, user: User = Depends(current_user), conn=Depends(db.get_d
 @app.delete("/appointments/{appointment_id}")
 def cancel(appointment_id: int, user: User = Depends(current_user), conn=Depends(db.get_db)):
     return services.cancel_appointment(conn, user, appointment_id)
+
+
+@app.get("/soap")
+def soaps(status: str | None = None, user: User = Depends(current_user), conn=Depends(db.get_db)):
+    return services.list_soaps(conn, user, status)
 
 
 @app.get("/soap/{soap_id}")
