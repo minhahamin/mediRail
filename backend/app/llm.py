@@ -15,6 +15,9 @@ class LLMError(Exception):
 def chat(messages: list[dict], tools: list[dict] | None = None, *, model: str | None = None) -> dict:
     """반환: {"message": assistant message, "usage": {...}, "model": str}"""
     s = get_settings()
+    if s.fake_llm:   # E2E 전용 결정적 가짜 LLM (외부 호출·비용 없음)
+        from . import fake_llm
+        return fake_llm.chat(messages, tools, model=model)
     if not s.openrouter_api_key:
         raise LLMError("OPENROUTER_API_KEY가 설정되지 않았습니다")
     body = {"model": model or s.model, "messages": messages, "temperature": 0, "max_tokens": s.max_tokens}

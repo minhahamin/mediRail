@@ -18,6 +18,8 @@ async def lifespan(app: FastAPI):
     s = get_settings()
     if s.is_production and s.jwt_secret.startswith("dev-only"):   # 운영에서 기본 시크릿으로 뜨는 사고를 막는다
         raise RuntimeError("MEDIRAIL_JWT_SECRET을 설정하세요 (운영 환경에서는 기본 시크릿을 쓸 수 없습니다)")
+    if s.is_production and s.fake_llm:      # 가짜 LLM이 운영에서 켜지면 사용자에게 가짜 의료 답변이 나간다
+        raise RuntimeError("MEDIRAIL_FAKE_LLM은 운영 환경에서 쓸 수 없습니다")
     conn = db.connect()
     db.init_db(conn)
     if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:

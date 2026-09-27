@@ -39,6 +39,7 @@ class Settings:
     register_per_ip_hour: int
     max_users: int
     superadmin_username: str
+    fake_llm: bool
     superadmin_password: str
 
     @property
@@ -68,6 +69,7 @@ def get_settings() -> Settings:
         register_per_ip_hour=int(e("MEDIRAIL_REGISTER_PER_IP_HOUR", "5")),
         max_users=int(e("MEDIRAIL_MAX_USERS", "300")),   # 공개 데모의 DB 무한 증가 방지
         # 실제 최상위 관리자(비공개): 환경변수로만 만들고 회전한다. 저장소·화면 어디에도 없다.
+        fake_llm=e("MEDIRAIL_FAKE_LLM", "") == "1",   # E2E·오프라인 전용. 운영에서는 기동을 거부한다
         superadmin_username=e("MEDIRAIL_SUPERADMIN_USERNAME", ""),
         superadmin_password=e("MEDIRAIL_SUPERADMIN_PASSWORD", ""),
     )
