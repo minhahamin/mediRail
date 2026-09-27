@@ -21,6 +21,9 @@ def pg_uri(tmp_path_factory):
     if not USE_PG:
         yield None
         return
+    if os.environ.get("MEDIRAIL_TEST_PG_URL"):   # CI: 서비스 컨테이너의 PostgreSQL을 그대로 쓴다
+        yield os.environ["MEDIRAIL_TEST_PG_URL"]
+        return
     import pgserver
 
     server = pgserver.get_server(tmp_path_factory.mktemp("pgdata"))

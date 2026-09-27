@@ -1,5 +1,7 @@
 # MediRail
 
+[![CI](https://github.com/minhahamin/mediRail/actions/workflows/ci.yml/badge.svg)](https://github.com/minhahamin/mediRail/actions/workflows/ci.yml)
+
 > **근거 기반·권한 분리·의사 승인 원칙의 의료 AI 에이전트**
 > 진단·처방은 하지 않습니다. 문진 요약, SOAP 초안, 예약/안내, 의학 문헌 검색, 약물 상호작용(식약처 DUR) 조회를 돕고, 모든 답변에 근거를 붙이며, 최종 판단은 의사에게 남깁니다.
 
@@ -457,7 +459,7 @@ erDiagram
 | 외부 지식 | **MCP 서버** (Python MCP SDK 2.x): PubMed(NCBI E-utilities), 식약처 DUR(공공데이터포털) |
 | 프론트엔드 | React 19 · TypeScript · Vite · 세이지 그린 스티커 스타일 ([디자인 가이드](docs/design.md)) · 외부 UI 라이브러리 없음 |
 | 배포 | **Railway** (웹: nginx / API: uvicorn + MCP 서브프로세스 / PostgreSQL) · Docker |
-| 테스트/평가 | pytest (326개, SQLite·PostgreSQL 양쪽 통과) · 자체 평가 하네스 (45문항) |
+| 테스트/평가 | pytest (337개, SQLite·PostgreSQL 양쪽 통과) · **Playwright E2E (39개)** · **GitHub Actions CI** · 자체 평가 하네스 (45문항) |
 
 ---
 
@@ -472,6 +474,7 @@ MediRail/
 │   │   ├── agent.py        # 에이전트 루프: 응급 차단 → 도구 호출 → 출력 검증/자가 교정 → 감사
 │   │   ├── tools.py        # 역할별 도구 레지스트리 (13종)
 │   │   ├── services.py     # 도메인 로직 + 권한 검사의 단일 지점 (회원가입 포함)
+│   │   ├── fake_llm.py     # E2E 전용 결정적 가짜 LLM (운영에서는 기동 거부)
 │   │   ├── admin.py        # 시스템 관리자: 권한 부여, 현황, break-glass, 시스템 계정 부트스트랩
 │   │   ├── guardrails.py   # 응급 감지 / 출력 검증
 │   │   ├── ratelimit.py    # 사용자·IP·일일 요청 제한
@@ -484,14 +487,15 @@ MediRail/
 │   │   ├── clinic.py       # 진료시간·슬롯·취소 마감 규칙
 │   │   ├── db.py, seed.py  # SQLite/PostgreSQL 어댑터, 스키마, 합성 데이터
 │   │   └── config.py
-│   └── tests/              # 326 tests
-├── frontend/               # React + Vite (Dockerfile, nginx.conf.template)
+│   └── tests/              # 337 tests
+├── frontend/               # React + Vite (Dockerfile, nginx.conf.template), e2e/ (Playwright 39개)
 │   └── src/                # App, router, api, components/{Auth,Chat,Appointments,Patients,Soap,Audit,Admin,ui}
 ├── mcp_servers/
 │   ├── pubmed/             # client.py(E-utilities) + server.py(MCP)
 │   └── mfds_dur/           # client.py(DUR 성분정보 OpenAPI) + server.py(MCP)
 ├── skills/                 # SKILL.md 5종: soap-note, intake-summary, medical-literature-qa, drug-interaction-check, emergency-triage
 ├── eval/                   # 45문항 · 러너 · 채점기 · 셀프테스트 · 대시보드 · report.md
+├── .github/workflows/ci.yml # CI: 백엔드(SQLite·PostgreSQL), 프론트 빌드, E2E, 비밀 정보 검사
 ├── docs/                   # design.md(스타일 가이드), screenshots/
 └── railway.json            # Railway 배포 설정 (API)
 ```
@@ -588,14 +592,15 @@ railway up frontend --path-as-root --service medirail-web --ci
 ## 테스트
 ```bash
 cd backend
-python -m pytest -q                                # 325 passed, 1 skipped (SQLite)
-MEDIRAIL_TEST_DB=postgres python -m pytest -q      # 325 passed, 1 skipped (임베디드 PostgreSQL, pgserver)
+python -m pytest -q                                # 336 passed, 1 skipped (SQLite)
+MEDIRAIL_TEST_DB=postgres python -m pytest -q      # 336 passed, 1 skipped (임베디드 PostgreSQL, pgserver)
 ```
 
-**같은 테스트 전체를 SQLite와 PostgreSQL 양쪽에서** 돌립니다(총 326개 중 DB별 마이그레이션 테스트 1개는 해당 DB에서만 실행되어 각각 325개 통과, 1개 건너뜀). 배포 DB가 다른데 개발 DB로만 검증하는 위험을 없애기 위해, DB 어댑터(`?`→`%s`, `RETURNING id`, 시퀀스 동기화)를 두고 로컬에서 실제 PostgreSQL 경로를 검증한 뒤 배포했습니다.
+**같은 테스트 전체를 SQLite와 PostgreSQL 양쪽에서** 돌립니다(총 337개 중 DB별 마이그레이션 테스트 1개는 해당 DB에서만 실행되어 각각 336개 통과, 1개 건너뜀). 배포 DB가 다른데 개발 DB로만 검증하는 위험을 없애기 위해, DB 어댑터(`?`→`%s`, `RETURNING id`, 시퀀스 동기화)를 두고 로컬에서 실제 PostgreSQL 경로를 검증한 뒤 배포했습니다.
 
 | 파일 | 테스트 | 검증 내용 |
 |---|---:|---|
+| `test_fake_llm.py` | 11 | E2E용 결정적 가짜 LLM: 시나리오, 도구·권한·가드레일과의 결합, **운영에서 켜면 기동 거부** |
 | `test_admin.py` | 39 | **시스템 관리자**: 부트스트랩·비밀번호 회전, 권한 부여 안전장치(자기·최상위·데모 보호, superadmin 부여 불가), 즉시 반영·감사, 계정 중지(토큰 무효화), 읽기 전용 마스킹·제한, break-glass 사유·감사, 채팅·임상 직접 접근 차단, **기존 DB 마이그레이션(SQLite·PostgreSQL)** |
 | `test_dur_client.py` | 37 | 식약처 API 특성 재현 모의 서버: 삭제 고시 제외, 양방향 검색, 500행 초과 무응답, 불완전 페이지, 3종 오류 형식, 키 미노출, 캐시(TTL·영속), 유사 표기(`needs_confirmation`)와 다른 약 구분, 상품명→성분 변환 |
 | `test_demo_accounts.py` | 3 | 데모 계정 목록을 **DB에서 조회**함을 증명 (DB 값을 바꾸면 응답이 바뀌고, 삭제하면 사라짐. 비밀번호·해시 미노출) |
@@ -612,7 +617,44 @@ MEDIRAIL_TEST_DB=postgres python -m pytest -q      # 325 passed, 1 skipped (임�
 | `test_mcp_bridge.py` | 9 | **실제 서브프로세스**로 MCP 왕복, 타임아웃, 크래시 후 재기동, 부분 기동 실패 |
 | `test_db_auth.py` · `test_rbac.py` · `test_prompts.py` | 22 | 시드, 인증, 진료 규칙, 권한 정의, 달력 |
 
-LLM 없이도 안전 속성을 검증할 수 있도록 에이전트에 LLM을 주입(dependency injection)하는 구조입니다. 외부 API 의존 테스트는 **API의 실제 특성을 재현한 모의 서버**를 쓰고, 실제 API와 실제 모델로는 별도로 수동 검증했습니다(위 "실환경 테스트" 참조). 프론트엔드는 `tsc` 타입 검사와 빌드, 브라우저(Playwright)로 화면·회원가입·채팅 흐름을 확인했습니다 (자동화된 프론트 테스트는 아직 없음).
+### E2E (Playwright, 39개)
+브라우저가 사람처럼 화면을 눌러 **처음부터 끝까지** 확인합니다. 백엔드는 임시 DB와 **결정적 가짜 LLM**(외부 호출·비용 없음, 매번 같은 결과)으로, 프론트는 **실제 프로덕션 빌드**를 서빙해 배포되는 번들과 같은 코드를 검증합니다.
+
+```bash
+cd frontend && npm ci && npx playwright install chromium
+npm run e2e          # 백엔드·프론트를 자동으로 띄우고 39개 시나리오 실행 (약 1분)
+```
+
+| 파일 | 시나리오 |
+|---|---:|
+| `auth.spec.ts` | 11 |
+| `roles.spec.ts` | 7 |
+| `chat.spec.ts` | 8 |
+| `admin.spec.ts` | 6 |
+| `appointments.spec.ts` | 4 |
+| `soap.spec.ts` | 3 |
+
+- **인증**: 로그인 화면 구성(폼 → 회원가입 → 데모 링크 순서), 데모 카드가 **API 응답(DB)을 그대로 그림**(응답을 바꾸면 화면이 바뀜), 가입 검증·사칭 아이디·중복 차단, 가입 후 새로고침 세션 유지
+- **역할별 권한(화면)**: 환자·간호사·의사·원무·읽기 전용 관리자의 메뉴와 임상 정보 잠금, 가입자 정보 마스킹
+- **채팅**: 출처 카드와 `[D1]` 칩, 도구 호출 기록, **응급 문장은 LLM 없이 119(자해 표현은 109)**, 서버 오류 표시
+- **의사 흐름**: 환자 선택 → SOAP 초안 요청 → 저장 → **의사가 화면에서 승인** (AI는 초안까지만)
+- **관리자**: 권한 부여의 **2단계 확인**과 즉시 반영, 계정 중지 시 로그인·기존 토큰 차단, 보호 계정, break-glass 사유 검증과 감사 기록
+- **예약**: 슬롯 조회(점심·일요일·토요일 규칙)→예약→취소
+
+**테스트가 정말 잡아내는지 확인했습니다(변이 테스트).** 화면 문구를 예전 표현으로 되돌리거나 환자 메뉴에 SOAP 탭을 노출(권한 회귀)하도록 일부러 망가뜨리자 해당 E2E가 실패했고, 원복 후 39개가 모두 통과했습니다.
+
+### CI (GitHub Actions)
+푸시·PR마다 5개 작업이 병렬로 실행됩니다 ([워크플로](.github/workflows/ci.yml)).
+
+| 작업 | 내용 |
+|---|---|
+| 백엔드 (SQLite) | 337개 테스트 |
+| 백엔드 (PostgreSQL) | **실제 PostgreSQL 16 서비스 컨테이너**에서 같은 테스트 전체 |
+| 프론트 | `tsc` 타입 검사 + 프로덕션 빌드 |
+| E2E | Playwright 39개 (실패 시 스크린샷·트레이스 리포트를 아티팩트로 저장) |
+| 비밀 정보 유입 검사 | API 키·개인 키 패턴, `.env`, 개인 메모 파일이 저장소에 들어오면 실패 |
+
+LLM 없이도 안전 속성을 검증할 수 있도록 에이전트에 LLM을 주입(dependency injection)하는 구조입니다. 외부 API 의존 테스트는 **API의 실제 특성을 재현한 모의 서버**를 쓰고, 실제 API와 실제 모델로는 별도로 수동 검증했습니다(위 "실환경 테스트" 참조). 프론트엔드는 `tsc` 타입 검사·빌드와 Playwright E2E로 검증합니다.
 
 ---
 
@@ -627,7 +669,7 @@ LLM 없이도 안전 속성을 검증할 수 있도록 에이전트에 LLM을 �
 - [x] **시스템 관리자 콘솔**: 권한 부여, 계정 중지, 현황, break-glass, 읽기 전용 데모 관리자
 - [ ] **평가 확장**: 도구를 붙인 에이전트 경로로 어려운 문항 추가(DUR·PubMed 근거 기반), MedQA/KorMedMCQA 반영, 재측정
 - [ ] **수치 근거 검증**: 답변의 수치가 초록에 실제로 있는지 규칙 기반으로 확인
-- [ ] **프론트 자동화 테스트**(Playwright E2E), CI(GitHub Actions)에서 SQLite·PostgreSQL 매트릭스
+- [x] **프론트 E2E 39개**(Playwright)와 **CI**(SQLite·PostgreSQL, 프론트 빌드, E2E, 비밀 정보 검사)
 - [ ] **MCP 서버 독립 배포**: HTTP 전송으로 별도 서비스화 (현재는 비용을 위해 API 컨테이너 안에서 실행)
 
 ---
@@ -656,7 +698,7 @@ REST와 에이전트 도구가 같은 함수를 호출하므로, LLM이 어떻�
 MCP 서버를 독립 서비스로 배포하면 구조는 더 깔끔하지만 서비스가 5개(웹, API, MCP×2, DB)로 늘어 월 비용이 커집니다. 예산 제약이 있는 포트폴리오라 stdio 서브프로세스로 같은 이미지에 넣었습니다. MCP 서버 자체는 독립 프로세스라 그대로 분리할 수 있고(로드맵), Claude Code 등 다른 MCP 클라이언트에서도 쓸 수 있습니다.
 
 **왜 DB 어댑터를 만들었나?**
-개발은 SQLite, 배포는 PostgreSQL입니다. ORM으로 갈아타는 대신 `sqlite3` 스타일 인터페이스를 흉내 내는 얇은 어댑터로 서비스 코드를 그대로 두고, **같은 326개 테스트를 두 DB에서 모두 통과**시켜 이식을 검증했습니다.
+개발은 SQLite, 배포는 PostgreSQL입니다. ORM으로 갈아타는 대신 `sqlite3` 스타일 인터페이스를 흉내 내는 얇은 어댑터로 서비스 코드를 그대로 두고, **같은 337개 테스트를 두 DB에서 모두 통과**시켜 이식을 검증했습니다.
 
 **왜 검증 실패 시 폐기가 아니라 자가 교정인가?**
 가드레일이 답변을 폐기하면 안전하지만 쓸모없습니다. 위반 사유를 알려 한 번 다시 쓰게 하면 모델이 도구를 호출해 올바른 답을 내는 경우가 많았습니다. 다만 무한 재시도는 비용과 지연을 키우므로 1회로 제한하고, 그래도 위반하면 폐기합니다.
@@ -670,7 +712,7 @@ LLM 판사는 비용이 들고 판사 자체의 편향이 섞입니다. 이 프�
 - 문항·참고문서는 자체 제작이며, 도구를 붙인 에이전트 경로에 대한 정량 평가는 아직 없음
 - 응급 감지의 부정 표현 미처리, 공휴일 미반영
 - 관리자 계정에 다중 인증(MFA)과 로그인 실패 잠금이 없음 (요청 제한만 있음). 요청 제한이 메모리 기반이라 API 인스턴스 1대만 지원. 인증은 데모 수준(비밀번호 재설정·이메일 인증·토큰 폐기 없음)
-- 프론트 자동화 테스트 없음. 첫 응답이 느릴 수 있음 (LLM + 외부 API, 약 3~15초)
+- E2E는 가짜 LLM을 쓰므로 실제 모델의 답변 품질은 별도 평가(eval)와 수동 확인에 의존. 첫 응답이 느릴 수 있음 (LLM + 외부 API, 약 3~15초)
 - 실제 개인정보·의료정보를 다루려면 개인정보보호법, 의료법, 의료기기(SaMD) 규제 검토가 필요
 
 ---
