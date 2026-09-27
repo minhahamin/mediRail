@@ -10,3 +10,6 @@ eval/cache/
 eval/results/
 .venv/
 .pytest_cache/
+
+# 개인 메모 (커밋 금지)
+참고*.txt
